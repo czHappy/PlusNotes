@@ -29,7 +29,38 @@
     ```
 - 在vscode中设置terminal为zsh
   - 在设置里面搜索terminal.integrated，设置"terminal.integrated.defaultProfile.linux": "zsh"
+- 一键配置脚本
+```bash
+#!/bin/bash
 
+# 清理
+sudo apt remove zsh -y
+rm -rf ~/.zshrc ~/.zsh* ~/.oh-my-zsh*
+
+# 安装Zsh和必要的依赖
+sudo apt update -y
+sudo apt install zsh git curl -y
+
+# 安装Oh My Zsh
+yes | sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+# 安装Powerlevel10k主题以及必要插件
+git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.oh-my-zsh/themes/powerlevel10k
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting # 安装语法高亮插件
+git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions # 安装自动补全插件
+
+# 更改zshrc配置
+search_pattern='ZSH_THEME="robbyrussell"'
+replace_string='ZSH_THEME="powerlevel10k/powerlevel10k"'
+replace_string=$(echo $replace_string | sed -e 's/\//\\\//g')
+sed -i "s/${search_pattern}/${replace_string}/g" ~/.zshrc
+
+search_pattern='plugins=(git)'
+replace_string='plugins=(git zsh-syntax-highlighting zsh-autosuggestions)'
+sed -i "s/${search_pattern}/${replace_string}/g" ~/.zshrc
+
+# 启动p10k配置
+zsh
+```
 ### /etc/host作用
 - /etc/hosts 文件是一个计算机系统中的一个本地主机名解析文件。它通常被用于在计算机上手动指定 IP 地址和主机名的映射关系。当在计算机上访问一个网站时，计算机通常需要将主机名（如 www.example.com）转换为一个 IP 地址，以便能够与该网站建立连接。这通常通过DNS进行，但是在某些情况下，可能需要手动指定这些映射关系，以避免需要使用 DNS 进行解析，或者为了将某个主机名指向一个特定的 IP 地址。
 
@@ -303,7 +334,48 @@ CodeChecker parse --export html --output ./reports_html ./reports
 +*/recorder/* # 如果是recorder目录下的文件，进行分析，不再往下匹配
 -* # 忽略，不再往下匹配
 ```
+## 2023.5.23
+### tr
+```sh
+tr '[:upper:]' '[:lower:]' #把大写转成小写
+echo "AAA" | tr '[:upper:]' '[:lower:]' # aaa
+```
+### /usr/bin/time + command
+```sh
+/usr/bin/time --format "buildtime: real=%e user=%U sys=%S [ %C ]" echo "hello" 
+# hello
+# buildtime: real=0.00 user=0.00 sys=0.00 [ echo hello ]
+```
+### tee
+```
+$(TIME_COMMAND) $(BUILD_COMMAND) -C "${BUILD_DIR}/${DEBUG_DIR}" 2>&1 && (echo "debug build SUCCEEDED") || (echo "debug build FAILED"; exit 1) | tee ${BUILD_DIR}/${DEBUG_DIR}/build-`date +%Y%m%dT%H%M%S`.log
+```
 
+## 2023.5.56
+### git 同步上游
+```sh
+# 首先fork 仓库
+# 添加源分支 URL
+git remote add upstream [源项目 URL]
+# 查看是否关联上上游仓库
+git remote -v
+# 从上游仓库源分支获取最新的代码
+git fetch upstream
+# 当前分支切换到本地主分支
+git checkout master
+# 合并上游master分支到当前分支
+git merge upstream/master
+# Push 到 Fork 分支
+git push
+```
+
+### git ssh密钥
+- ls -al ~/.ssh 检查密钥是否存在
+- ssh-keygen -t rsa -C "271xxxxxx@qq.com" 生成密钥对，包括私钥 公钥 密码可以输入也可以不输入
+- eval $(ssh-agent -s) 首先确保ssh-agent正常工作
+- ssh-add ~/.ssh/id_rsa 直接将私钥id_rsa添加到ssh代理中，跟windows不同的是不需要修改后缀为.ppk
+- vim /root/.ssh/id_rsa.pub 打开公钥文件复制全文将公钥id_rsa.pub添加到你的github或者gitlab等仓库中
+- 登录仓库，用户setting -> SSH key 将公钥粘贴进去，起个容易识别的名字 title
 ## Jenkinsfile
 ### pipeline
 - agent: 定义了pipeline或者stage内执行环境
@@ -313,16 +385,29 @@ CodeChecker parse --export html --output ./reports_html ./reports
 - environment: 定义一些自定义环境变量
   - ${env.WORKSPACE} 内置环境变量 当前工作空间目录
 - post: 在 Pipeline 结束的时候运行， 所以我们可以添加通知或者其他的步骤去完成清理、通知或者其他的 Pipeline 结束任务。
-```Jenkins
+- options
+```Jenkinsfile
 pipeline {
     agent any
     environment {
         DISABLE_AUTH = 'true'
         DB_ENGINE    = 'sqlite'
     }
+    options {
+      buildDiscarder(logRotator(daysToKeepStr: '180')) # 设置构建过程中保留的构建记录数量
+      skipDefaultCheckout() # 跳过默认的代码检出步骤。
+      timestamps() # 在构建输出中添加时间戳。用于记录构建的开始和结束时间。
+      parallelsAlwaysFailFast() # 一旦有一个步骤失败，整个并行块将不再等待其他步骤的完成，而是立即停止执行。
+    }
+    parameters {
+      string(name: 'USERNAME', defaultValue: 'guest', description: 'Enter your username')
+      booleanParam(name: 'DEBUG_MODE', defaultValue: false, description: 'Enable debug mode')
+    }
     stages {
       stage('Test') {
           steps {
+              echo "Username: ${params.USERNAME}"
+              echo "Debug mode enabled: ${params.DEBUG_MODE}"
               sh 'printenv'
               sh 'echo "Fail!"; exit 1'
           }
@@ -388,21 +473,23 @@ stages{
 }
 ```
 
+
+### 内置函数
+- populateEnv
+  - 在 Jenkins Pipeline 中，环境变量是通过 environment 部分定义的全局变量，可以在 Pipeline 的任何步骤中使用。但在某些情况下，需要在构建过程中动态加载当前构建的环境变量，并使其在 Pipeline 的后续步骤中可用。这时就可以使用 populateEnv 步骤来实现
 - publishHTML
   - 用于将HTML报告或文档发布到Jenkins构建的页面,在左侧导航栏可以找到名为reportName的链接
 ```
-publishHTML(target: [
-    allowMissing: true, # 如果设置为true，则允许在构建期间找不到HTML文件时继续构建，默认为false。
-    alwaysLinkToLastBuild: true, # 如果设置为true，则在构建页面上的侧边栏中始终显示链接到最后一次构建的报告，默认为false
-    keepAll: true, # 如果设置为true，则会保留构建历史中所有构建的报告，默认为false，只保留最后一次构建的报告
-    reportDir: 'path/to/html/files', # HTML报告文件所在的目录路径
-    reportFiles: 'index.html', # 要发布的HTML文件的名称或匹配模式，支持通配符
-    reportName: 'My HTML Report'# HTML报告在Jenkins构建页面上显示的名称
-])
+  publishHTML(target: [
+      allowMissing: true, # 如果设置为true，则允许在构建期间找不到HTML文件时继续构建，默认为false。
+      alwaysLinkToLastBuild: true, # 如果设置为true，则在构建页面上的侧边栏中始终显示链接到最后一次构建的报告，默认为false
+      keepAll: true, # 如果设置为true，则会保留构建历史中所有构建的报告，默认为false，只保留最后一次构建的报告
+      reportDir: 'path/to/html/files', # HTML报告文件所在的目录路径
+      reportFiles: 'index.html', # 要发布的HTML文件的名称或匹配模式，支持通配符
+      reportName: 'My HTML Report'# HTML报告在Jenkins构建页面上显示的名称
+  ])
 
 ```
-
-
 ## docker
 - 参阅https://yeasy.gitbook.io/docker_practice/
 - dockerfile
@@ -443,11 +530,146 @@ docker pull docker.plusai.co:5050/plusai-l4e-phase1-p1.1/selective_data_monitor:
 
 
 
-### protobuf
+## protobuf
+
+### 定义
 - 序列化和反序列化的message
+
+### demo
+- person.proto
+```protobuf
+syntax = "proto3";
+
+message Person {
+    string name = 1;
+    int32 age = 2;
+}
+
+```
+- main.cpp
+
+```c++
+#include <iostream>
+#include <fstream>
+#include "person.pb.h"
+
+void WritePersonToFile(const Person& person, const std::string& filename) {
+    std::ofstream output(filename, std::ios::binary | std::ios::trunc);
+    if (!person.SerializeToOstream(&output)) {
+        std::cerr << "Failed to write person to file." << std::endl;
+    }
+}
+
+void ReadPersonFromFile(Person& person, const std::string& filename) {
+    std::ifstream input(filename, std::ios::binary);
+    if (!person.ParseFromIstream(&input)) {
+        std::cerr << "Failed to read person from file." << std::endl;
+    }
+}
+
+int main() {
+    Person person;
+    person.set_name("John Doe");
+    person.set_age(30);
+
+    // 将消息序列化并写入文件
+    WritePersonToFile(person, "person.dat");
+
+    // 从文件中读取并反序列化消息
+    Person loadedPerson;
+    ReadPersonFromFile(loadedPerson, "person.dat");
+
+    // 打印读取到的消息
+    std::cout << "Name: " << loadedPerson.name() << std::endl;
+    std::cout << "Age: " << loadedPerson.age() << std::endl;
+
+    return 0;
+}
+
+```
+- CMakeLists.txt
+```makefile
+cmake_minimum_required(VERSION 3.10)
+project(protobuf_example)
+
+# 设置 C++ 标准
+set(CMAKE_CXX_STANDARD 11)
+
+# 寻找 Protocol Buffers 包
+find_package(Protobuf REQUIRED)
+
+# 生成 Protobuf C++ 代码
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS person.proto)
+
+# 添加可执行文件
+add_executable(main main.cpp ${PROTO_SRCS} ${PROTO_HDRS})
+
+# 链接 Protocol Buffers 库
+target_link_libraries(main PRIVATE ${Protobuf_LIBRARIES})
+
+```
+- 编译构建
+```
+apt-get install libprotobuf-dev protobuf-compiler #安装protobuf
+mkdir build
+cmake ..
+make
+```
+
 ### kafka
 ### systemd
 
 
+### 常用
+- 重启ADU
+  - common_if_testapp -tegrareset 重启ADU
+- 动态查看文件末尾新增
+  - tail -f system_metrics_collector.localhost.root.log.ERROR.19700101-000043.1830988
+
+- 环境变量设置
+  - rosparam set /use_sim_time false
+  - cat /data/VIN 
+  - . launch/pdb-l4e-b0007/setup.sh 
+- 查日志
+  - /tmp/ham.log
+- 路测
+  - 
+
+### ssh相关
+- 登陆脚本
+  - vi go 输入以下内容 chmod +x go 然后添加脚本所在位置到环境变量
+  - go 112即可ssh到112上
+```sh
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <parameter>"
+  exit 1
+fi
+
+case "$1" in
+  112)
+    USER="root"
+    IP="192.168.2.112"
+    PASSWORD="PLAV2021!"
+    ;;
+  125)
+    USER="root"
+    IP="192.168.11.125"
+    PASSWORD="PLAV2021!"
+    ;;
+  118)
+    USER="plusai"
+    IP="192.168.2.118"
+    PASSWD="plusai"
+    ;;
+  *)
+    echo "Invalid parameter: $1"
+    exit 1
+    ;;
+esac
+
+sshpass -p "$PASSWORD" ssh $USER@$IP
+```
 ## 可能的工作
 ### 台架预定系统
