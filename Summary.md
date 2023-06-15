@@ -616,11 +616,24 @@ cmake ..
 make
 ```
 
+
+### clang-format
+- vscode安装C++ 扩展插件
+- 打开首选项设置 Ctrl + ,
+- 搜索format 勾选format on save，之后每次保存文件之后会自动进行格式刷
+
 ### kafka
 ### systemd
 
+### core dump
+- 修改limit
+  - ulimit -c 查询
+  - ulimit -c unlimited
+- 修改默认路径
+  - 临时修改：sudo echo ‘/var/log/%e.core.%p’ > /proc/sys/kernel/core_pattern
+  - 永久修改：sudo /sbin/sysctl -w kernel.core_pattern=/var/log/%e.core.%p
 
-### 常用
+### PLUSAI常用
 - 重启ADU
   - common_if_testapp -tegrareset 重启ADU
 - 动态查看文件末尾新增
@@ -633,7 +646,10 @@ make
 - 查日志
   - /tmp/ham.log
 - 路测
-  - 
+  - 跳板机： ssh chengzhen@192.168.10.241 密码chengzhen
+  - 登陆路测工程师机器： ssh plusai@192.168.15.126 密码plusai
+  - 登陆ADU
+    - 192.168.11.100 root PLAV2021! or plusai plusai
 
 ### ssh相关
 - 登陆脚本
