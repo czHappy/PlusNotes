@@ -376,6 +376,7 @@ git push
 - ssh-add ~/.ssh/id_rsa 直接将私钥id_rsa添加到ssh代理中，跟windows不同的是不需要修改后缀为.ppk
 - vim /root/.ssh/id_rsa.pub 打开公钥文件复制全文将公钥id_rsa.pub添加到你的github或者gitlab等仓库中
 - 登录仓库，用户setting -> SSH key 将公钥粘贴进去，起个容易识别的名字 title
+
 ## Jenkinsfile
 ### pipeline
 - agent: 定义了pipeline或者stage内执行环境
@@ -633,7 +634,8 @@ make
   - 临时修改：sudo echo ‘/var/log/%e.core.%p’ > /proc/sys/kernel/core_pattern
   - 永久修改：sudo /sbin/sysctl -w kernel.core_pattern=/var/log/%e.core.%p
 
-### PLUSAI常用
+## PLUSAI常用
+### ADU测试
 - 重启ADU
   - common_if_testapp -tegrareset 重启ADU
 - 动态查看文件末尾新增
@@ -645,13 +647,24 @@ make
   - . launch/pdb-l4e-b0007/setup.sh 
 - 查日志
   - /tmp/ham.log
-- 路测
-  - 跳板机： ssh chengzhen@192.168.10.241 密码chengzhen
-  - 登陆路测工程师机器： ssh plusai@192.168.15.126 密码plusai
-  - 登陆ADU
-    - 192.168.11.100 root PLAV2021! or plusai plusai
+### 路测
+- 路测分支
+```sh
+# 新建本地分支 同步上游最新路测分支
+git checkout -b master-20230616 --track upstream/master-20230616
+# 将改动的commit cherry-pick到路测分支
+git cherry-pick 1311102303e7ede88ee5a5914b1893253371ae5d
+# 解决冲突
+...
+# push
+git push upstream master-20230616
+```
+- 跳板机： ssh chengzhen@192.168.10.241 密码chengzhen
+- 登陆路测工程师机器： ssh plusai@192.168.15.126 密码plusai
+- 登陆ADU
+  - 192.168.11.100 root PLAV2021! or plusai plusai
 
-### ssh相关
+## ssh相关
 - 登陆脚本
   - vi go 输入以下内容 chmod +x go 然后添加脚本所在位置到环境变量
   - go 112即可ssh到112上
@@ -689,3 +702,10 @@ sshpass -p "$PASSWORD" ssh $USER@$IP
 ```
 ## 可能的工作
 ### 台架预定系统
+
+
+### Questions
+- 为什么Failed to connect via socket_fd 16 to '192.168.2.14' on port 13006: 'Operation already in progress'
+- 为什么Failed to connect via socket_fd
+
+https://zoom.us/j/99076697606?pwd=Rkd5QnEzY0QyeWZGVHlQcE1qRkdGZz09
