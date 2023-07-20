@@ -1,0 +1,26 @@
+2023-07-13 15:23:04,069 - simple_example - ERROR - error message
+2023-07-13 15:23:04,069 - simple_example - CRITICAL - critical message
+2023-07-13 15:23:04,070 - simple_example - ERROR - error message: 1
+2023-07-13 15:23:04,070 - simple_example - CRITICAL - critical message: 1
+2023-07-13 15:23:04,272 - simple_example - ERROR - error message: 2
+2023-07-13 15:23:04,272 - simple_example - CRITICAL - critical message: 2
+2023-07-13 15:23:04,474 - simple_example - ERROR - error message: 3
+2023-07-13 15:23:04,474 - simple_example - CRITICAL - critical message: 3
+2023-07-13 15:23:04,676 - simple_example - ERROR - error message: 4
+2023-07-13 15:23:04,676 - simple_example - CRITICAL - critical message: 4
+2023-07-13 15:23:04,878 - simple_example - ERROR - error message: 5
+2023-07-13 15:23:04,878 - simple_example - CRITICAL - critical message: 5
+2023-07-13 15:23:05,079 - simple_example - ERROR - error message: 6
+2023-07-13 15:23:05,079 - simple_example - CRITICAL - critical message: 6
+2023-07-13 15:23:05,281 - simple_example - ERROR - error message: 7
+2023-07-13 15:23:05,281 - simple_example - CRITICAL - critical message: 7
+2023-07-13 15:23:05,483 - simple_example - ERROR - error message: 8
+2023-07-13 15:23:05,484 - simple_example - CRITICAL - critical message: 8
+2023-07-13 15:23:05,686 - simple_example - ERROR - error message: 9
+2023-07-13 15:23:05,687 - simple_example - CRITICAL - critical message: 9
+2023-07-13 15:26:11,629 - simple_example - ERROR - error message
+2023-07-13 15:26:11,630 - simple_example - CRITICAL - critical message
+2023-07-13 15:26:11,630 - simple_example - CRITICAL - critical message: ### 1 2 3
+2023-07-13 15:27:02,728 - simple_example - ERROR - error message
+2023-07-13 15:27:02,728 - simple_example - CRITICAL - critical message
+2023-07-13 15:27:02,728 - simple_example - CRITICAL - ### 1 2 3

@@ -630,7 +630,7 @@ make
 - 修改limit
   - ulimit -c 查询
   - ulimit -c unlimited
-- 修改默认路径
+- 修改默认路径z`
   - 临时修改：sudo echo ‘/var/log/%e.core.%p’ > /proc/sys/kernel/core_pattern
   - 永久修改：sudo /sbin/sysctl -w kernel.core_pattern=/var/log/%e.core.%p
 
@@ -663,7 +663,9 @@ git push upstream master-20230616
 - 登陆路测工程师机器： ssh plusai@192.168.15.126 密码plusai
 - 登陆ADU
   - 192.168.11.100 root PLAV2021! or plusai plusai
-
+- 查看某个进程所占用的资源
+  - pidof PROCESS_NAME
+  - top -p PID
 ## ssh相关
 - 登陆脚本
   - vi go 输入以下内容 chmod +x go 然后添加脚本所在位置到环境变量
@@ -700,12 +702,48 @@ esac
 
 sshpass -p "$PASSWORD" ssh $USER@$IP
 ```
-## 可能的工作
-### 台架预定系统
+### gdb 调试
+- 编译时工具链由mk指定
+```bash
+vi /home/workspace/v3na_linux_bsp/make/plus-defs.mk
+# contents
+BSP_TOP_DIR = /home/workspace/v3na_linux_bsp
+TOOLCHAIN_ROOT = $(BSP_TOP_DIR)/toolchains/gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu
+TOOLCHAIN_SYS_ROOT = $(TOOLCHAIN_ROOT)/aarch64-linux-gnu/libc
+CROSSBIN = $(TOOLCHAIN_ROOT)/bin/aarch64-linux-gnu-
+...
+#CXX
+ifeq ($(CXX),g++)
+CXX    = $(CROSSBIN)g++ # $(TOOLCHAIN_ROOT)/bin/aarch64-linux-gnu-g++
+endif
+```
 
+- example
+```bash
+/home/workspace/v3na_linux_bsp/toolchains/gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-g++ test.cpp other.cpp -o test -g -I .
+```
+
+## POSTDB数据库
+### 远程连接
+```
+sudo apt install postgresql postgresql-contrib # 安装psql命令
+psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据库 后续输入密码
+```
 
 ### Questions
 - 为什么Failed to connect via socket_fd 16 to '192.168.2.14' on port 13006: 'Operation already in progress'
 - 为什么Failed to connect via socket_fd
 
-https://zoom.us/j/99076697606?pwd=Rkd5QnEzY0QyeWZGVHlQcE1qRkdGZz09
+### 小工具
+- 把文件内容复制到粘贴板
+  ```
+  xclip -sel clip file_name
+  ```
+- 把公钥传送到别的服务器
+
+
+
+- 打印机
+  - 477打印机
+  - Ctrl + P
+/data/plusai/DoNotUseThisDirectory/20230710/1.6.1667/plusai

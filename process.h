@@ -28,7 +28,4 @@ public:
     objx(int x, int y):a(x),b(y){}
     int a;
     int b;
-    bool operator==(const objx &B) {
-    return a == B.b && b == B.b;
-}
 };

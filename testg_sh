@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# cat > script.sh <<EOF
+# #!/bin/bash
+# echo "Hello, World!"
+# echo "This is a multiline script."
+# echo "You can add more commands here."
+# docker run -it xxx
+# docker exec -it xxx
+# EOF
+
+script="echo \"Hello, World!\" \n \
+echo \"This is a multiline script.\"\n \
+echo \"You can add more commands here.\""
+echo -e $script > script.sh
+bash -s < script.sh
+

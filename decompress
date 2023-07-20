@@ -1,0 +1,556 @@
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <sys/poll.h>
+
+#include <string>
+#include <thread>
+#include <ipc/logging.h>
+#include <ipc/shm_bus/global_shm_bus.h>
+#include <ipc/shm_bus/local_shm_bus.h>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <utility>
+#include <opencv2/opencv.hpp>
+#include "dispatcher_client.hpp"
+
+namespace drive {
+namespace dispatcher {
+using namespace common::ipc;
+
+DispatcherClient::DispatcherClient(std::string address, const uint32_t port)
+: address_(std::move(address))
+, port_(port) {
+    log_node_handle_ = std::make_unique<ros::NodeHandle>();
+}
+
+DispatcherClient::~DispatcherClient() {
+    is_active_ = false;
+    queue_cv_.notify_one();
+    
+    if (handle_message_thread_.joinable()) {
+        handle_message_thread_.join();
+    }
+    if (publish_message_thread_.joinable()) {
+        publish_message_thread_.join();
+    }
+}
+
+void DispatcherClient::stop() {
+    is_active_ = false;
+}
+
+bool DispatcherClient::init() {
+    // Wait the last time connection finish
+    if (handle_message_thread_.joinable()) {
+        handle_message_thread_.join();
+    }
+    if (publish_message_thread_.joinable()) {
+        publish_message_thread_.join();
+    }
+    ipc_logger.error("Start init dispatcher client");
+    need_restart_ = false;
+    message_queue_ = {};
+    handle_message_thread_ = std::thread(&DispatcherClient::startWorkerThreads, this);
+    publish_message_thread_ = std::thread(&DispatcherClient::startPublisherThread, this);
+    connection_ = std::make_shared<Connection>();
+    return connection_->connectToServer(address_, port_);
+}
+
+void DispatcherClient::start() {
+    std::cout<<"==================Now let's start==================\n";
+    while(is_active_) {
+        if (!init()) {
+            ipc_logger.error("Failed to init dispatcher client");
+            return;
+        }
+
+        if (!sendTopicsToServer()) {
+            ipc_logger.error("Failed to send topics to server");
+            return;
+        }
+
+        startReceiveMsg();
+    }
+}
+
+bool DispatcherClient::sendTopicsToServer() const {
+    ipc_logger.info("topics json file: %%", FLAGS_dispatcher_topics_json_file);
+    std::cout << "topics json file: " << FLAGS_dispatcher_topics_json_file << std::endl;
+    Json::Reader reader;
+    Json::Value cfg_root;
+    drive::dispatcher::TopicReport topicReport;
+    std::ifstream cfg_file(FLAGS_dispatcher_topics_json_file);
+    cfg_file >> cfg_root;
+    auto wanted_topics_patterns = cfg_root["wanted_topics"];
+    for (const auto& wanted_topics_pattern : wanted_topics_patterns) {
+        auto& topic = *topicReport.add_topics();
+        topic = wanted_topics_pattern.asString();
+    }
+
+    if (!connection_->sendMsg(topicReport)) {
+        ipc_logger.error("Send topic report failed");
+        return false;
+    }
+
+    std::cout << "Send wanted topics pattern to server success\n";
+    return true;
+}
+
+void DispatcherClient::startReceiveMsg() {
+    ipc_logger.info("Begin receiving serialized msg...");
+    std::cout << "Begin receiving serialized msg..." << std::endl;
+    while(is_active_) {
+        std::vector<uint8_t> data_buffer;
+        if (!connection_->receiveMsg(data_buffer)) {
+            ipc_logger.error("Failed to receive any message");
+            need_restart_ = true;
+            ipc_logger.error("Will restart dispatcher client");
+            queue_cv_.notify_one();
+            break;
+        }
+
+        // Calculate bandwidth
+        auto now = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration<double, std::milli>(now - last_calculate_time_).count() / 1000;
+        total_bytes_ += data_buffer.size();
+        if (duration > 10) {
+            ipc_logger.error("Dispatcher bandwidth is %% Bps", total_bytes_ / duration);
+            last_calculate_time_ = now;
+            total_bytes_ = 0;
+        }
+
+        {
+            std::lock_guard<std::mutex> lockGuard(queue_mutex_);
+            // std::cout << "Received message size: " << data_buffer.size() << std::endl;
+            message_queue_.push(std::move(data_buffer));
+        }
+
+        queue_cv_.notify_one();
+    }
+}
+
+bool DispatcherClient::importReport(const DispatcherReport& report) {
+    // Yield once before acquiring a bunch of PIDSpinlocks below.
+    std::this_thread::yield();
+    bool success = true;
+
+    auto& global_shm_bus = GlobalShmBus::Get();
+
+    // First, import topics as they doesn't depend on anything else.
+    for (auto& topic_info : report.topics()) {
+        // std::cout<<"xxxxxxxxxxxxxxxxxx======"<<topic_info.topic()<<std::endl;
+        // if(topic_info.topic().find("image_color/compressed") != std::string::npos)
+        //     std::cout<<topic_info.topic()<<" "<<topic_info.ros_message_datatype()
+        //                                 <<" "<<topic_info.ros_message_md5sum()
+        //                                 <<" "<<topic_info.ros_message_definition()
+        //                                 <<" "<<topic_info.protobuf_datatype()
+        //                                 <<"***********************"<<std::endl;
+        if (!global_shm_bus.lookupTopic(topic_info.topic())) {
+            ipc_logger.info("Importing ShmBus topic %%", topic_info.topic());
+        }
+
+        if (!global_shm_bus.registerTopic(topic_info.topic(),
+                                          topic_info.ros_message_datatype(),
+                                          topic_info.ros_message_md5sum(),
+                                          topic_info.ros_message_definition(),
+                                          topic_info.protobuf_datatype())) {
+            ipc_logger.error("Failed to import or update topic %%",
+                             topic_info.topic(),
+                             ::plusai::common::logging::LogParamPayload(
+                                 "ros_message_datatype",    topic_info.ros_message_datatype(),
+                                 "ros_message_md5sum",      topic_info.ros_message_md5sum(),
+                                 "protobuf_datatype",       topic_info.protobuf_datatype()));
+            success = false;
+            continue;
+        }
+        ipc_logger.info("Imported ShmBus topic %%", topic_info.topic());
+    }
+
+    auto enter_pid_spinlock = [](auto& lock, bool pre_yield = false) {
+        std::unique_lock<PIDSpinlock> l;
+        if (!lock.isOwned()) {
+            lock.lock(pre_yield);
+            l = {lock, std::adopt_lock};
+        }
+        return l;
+    };
+    auto* local_node_metadata = LocalShmBus::Get().getNodeMetadata();
+    if (!local_node_metadata) {
+        ipc_logger.error("Local node metadata is nullptr");
+        return false;
+    }
+
+    // Update associated publishers and subscribers
+    auto import = [&](auto&& kind, auto& topics, auto& node_topics, auto&& topic_nodes_ptr) {
+        auto node_topics_lock = enter_pid_spinlock(node_topics.lock);
+
+        // first, clear out any previous topics. We hold the node_metadata->lock the entire time
+        // so no need to worry about interim concurrent reads.
+        for (auto& topic_metadata : node_topics.items) {
+            for (auto* nodes : {&topic_metadata->publishers, &topic_metadata->subscribers}) {
+                auto nodes_lock = enter_pid_spinlock(nodes->lock);
+                auto erase_iter = std::remove(nodes->items.begin(),
+                                              nodes->items.end(),
+                                              local_node_metadata);
+                nodes->items.erase(erase_iter, nodes->items.end());
+            }
+        }
+
+        node_topics.items.clear();
+
+        // Now, re-register all associations.
+        for (auto& topic_info : topics) {
+            auto topic_metadata = global_shm_bus.lookupTopic(topic_info.topic());
+            if (!topic_metadata) {
+                ipc_logger.error("In report of remote Dispatcher %%, %% topic %% "
+                                 "has not been properly imported!",
+                                 ::plusai::common::logging::LogParamString(kind, false),
+                                 topic_info.topic());
+                success = false;
+                continue;
+            }
+
+            node_topics.items.emplace_back(topic_metadata);
+
+            auto& topic_nodes = topic_metadata.get()->*topic_nodes_ptr;
+            auto topic_nodes_lock = enter_pid_spinlock(topic_nodes.lock);
+            if (topic_nodes.items.size() < topic_nodes.items.capacity()) {
+                topic_nodes.items.emplace_back(local_node_metadata);
+            } else {
+                ipc_logger.error("Cannot add %% topic %%: reached capacity (%%)",
+                                 ::plusai::common::logging::LogParamString(kind, false),
+                                 topic_info.topic(),
+                                 topic_nodes.items.capacity());
+            }
+        }
+    };
+
+    import("advertised", report.topics(),
+           local_node_metadata->advertised_topics, &ShmBusTopicMetadata::publishers);
+
+    return success;
+
+}
+
+void DispatcherClient::updateTopicReportPeriod() {
+    auto now = std::chrono::high_resolution_clock::now();
+    if (next_update_time_ < now) {
+        next_update_time_ = now + std::chrono::seconds(1);
+        if (!importReport(report_)) {
+            ipc_logger.error("Failed to import report");
+            return;
+        }
+        ipc_logger.info("Update dispatcher report success");
+    }
+}
+
+bool DispatcherClient::handleMessage(std::vector<uint8_t>&& data_buffer) {
+    DispatchProtocol dispatch_protocol(std::move(data_buffer));
+    auto type = dispatch_protocol.getBufType();
+
+    updateTopicReportPeriod();
+
+    switch (type) {
+        case MessageType::DISPATCHER_REPORT:
+            return handleDispatcherReport(dispatch_protocol);
+        case MessageType::TOPIC_MESSAGE:
+            return handleTopicMessage(dispatch_protocol);
+        case MessageType::LOG_MESSAGE:
+            return handleLogMessage(dispatch_protocol);
+        default:
+            return false;
+    }
+}
+
+bool DispatcherClient::handleDispatcherReport(DispatchProtocol& dispatch_protocol) {
+    report_.Clear();
+    if (!dispatch_protocol.parseProtobufMessage(report_)) {
+        ipc_logger.error("Failed to parse DispatcherReport");
+        return false;
+    }
+    if (report_.has_timestamp_ms()) {
+        auto server_ts_ms = report_.timestamp_ms();
+        auto client_ts_ms =  std::chrono::high_resolution_clock::now().time_since_epoch().count() * 1.0 / 1e6;
+        server_client_time_diff_ms_.store(client_ts_ms - server_ts_ms);
+        ipc_logger.error("server and client time diff:%%", server_client_time_diff_ms_.load());
+    }
+    if (!importReport(report_)) {
+        ipc_logger.error("Failed to import report");
+        return false;
+    }
+    ipc_logger.error("Update dispatcher report success");
+    return true;
+}
+
+bool DispatcherClient::handleTopicMessage(DispatchProtocol &dispatch_protocol) {
+    ShmMessage shm_msg;
+    while(dispatch_protocol.getNextProtobuf(shm_msg)) {
+        bool is_compressed_image = (shm_msg.ros_topic().find("image_color/compressed")
+                                    != std::string::npos);
+        if(is_compressed_image) decompressShmMsg(shm_msg);
+        std::lock_guard<std::mutex> lockGuard(shm_message_queue_mutex_);
+        shm_message_queue_.push(std::move(shm_msg));
+        shm_message_queue_cv_.notify_one();
+    }
+    return true;
+}
+
+bool DispatcherClient::decompressShmMsg(ShmMessage& shm_msg_compressed) {
+    std::cout<<"==================>DispatcherClient::decompressShmMsg"<<std::endl;
+    const void* mem = shm_msg_compressed.payload().data();
+    size_t size = shm_msg_compressed.payload().size();
+    std::cout<<"==================>BEFORE decompressShmMsg LEN = "<<size<<std::endl;
+    const auto mutable_mem = const_cast<uint8_t*>(static_cast<const uint8_t*>(mem));
+    sensor_msgs::CompressedImage sensor_msg_decompressed;
+    ros::serialization::IStream is(mutable_mem, size);
+    ros::serialization::deserialize(is, sensor_msg_decompressed);
+    sensor_msgs::ImagePtr decompressed_image_ptr = nullptr;
+    cv_bridge::CvImageConstPtr cv_ptr;
+    size_t origin_topic_len = shm_msg_compressed.ros_topic().size();
+    std::string target_topic = shm_msg_compressed.ros_topic().substr(0, origin_topic_len - 11);
+    shm_msg_compressed.set_ros_topic(target_topic);
+    std::cout<<shm_msg_compressed.ros_topic()<<std::endl;
+    try {
+        
+        cv_ptr = cv_bridge::toCvCopy(sensor_msg_decompressed);
+        if(size == 139221){
+            std::cout<<"*********************get img"<<std::endl;
+            cv::Mat img;
+            cv_ptr->image.copyTo(img);
+            cv::imwrite("test_origin.PNG", img);
+        }
+        decompressed_image_ptr = cv_ptr->toImageMsg();
+    } catch (cv_bridge::Exception& e) {
+        LOG(ERROR) << "cv_bridge exception: " << e.what();
+        return false;
+    }
+    const auto msg_len = ros::serialization::serializationLength(*decompressed_image_ptr);
+    std::cout<<"==================>AFTER decompressShmMsg LEN = "<<msg_len<<std::endl;
+    auto& shm_payload = *shm_msg_compressed.mutable_payload();
+    shm_payload.resize(msg_len);
+    auto mem_shm = reinterpret_cast<uint8_t*>(&shm_payload[0]);
+    ros::serialization::OStream os(mem_shm, msg_len);
+    ros::serialization::serialize(os, *decompressed_image_ptr);
+    return true;
+}
+
+bool DispatcherClient::handleLogMessage(DispatchProtocol &dispatch_protocol) {
+    log_message_.Clear();
+    while (dispatch_protocol.getNextProtobuf(log_message_)) {
+        auto process_name = log_message_.process_name();
+        if (process_log_publisher_.find(process_name) == process_log_publisher_.end()) {
+            auto topic = "/" + process_name + "/shared_log";
+            auto publisher =
+                std::make_shared<Publisher>(common::ipc::advertise<std_msgs::String>(*log_node_handle_, topic, 1000));
+            if (!publisher) {
+                ipc_logger.error("Failed to advertise %%", topic);
+                continue;
+            }
+            ipc_logger.error("Advertised %% success", topic);
+            process_log_publisher_[process_name] = publisher;
+        }
+        for (auto&& elem: *log_message_.mutable_rendered_message()) {
+            std_msgs::String data;
+            data.data = std::move(elem);
+            process_log_publisher_.at(process_name)->publish(std::move(data));
+        }
+    }
+
+    return true;
+}
+
+void DispatcherClient::startWorkerThreads() {
+    auto processThread = [&]() {
+        while(is_active_ && !need_restart_) {
+            std::vector<uint8_t> data_buffer;
+            {
+                std::unique_lock<std::mutex> uniqueLock(queue_mutex_);
+                while(is_active_ && !need_restart_ && message_queue_.empty()) {
+                    queue_cv_.wait_for(uniqueLock, std::chrono::milliseconds(50));
+                }
+                if (!is_active_ || need_restart_) {
+                    ipc_logger.error("Dispatcher disconnect");
+                    return;
+                }
+                data_buffer = std::move(message_queue_.front());
+                message_queue_.pop();
+            }
+            handleMessage(std::move(data_buffer));
+        }
+    };
+    processThread();
+    ipc_logger.error("Worker thread exits");
+}
+
+void DispatcherClient::startPublisherThread() {
+    while(is_active_ && !need_restart_) {
+        ShmMessage shm_message;
+        double now_ms = 0;
+        double target_pub_ts_ms = 0;
+        double original_pub_ts_ms = 0;
+        {
+            std::unique_lock<std::mutex> uniqueLock(shm_message_queue_mutex_);
+            while(is_active_ && !need_restart_ && shm_message_queue_.empty()) {
+                shm_message_queue_cv_.wait_for(uniqueLock, std::chrono::milliseconds(50));
+            }
+            if (!is_active_ || need_restart_) {
+                ipc_logger.error("Dispatcher disconnect, stop publisher thread");
+                return;
+            }
+            // check expected publish time
+            original_pub_ts_ms = shm_message_queue_.top().publish_timestamp() * 1.0 / 1e6;
+            now_ms = std::chrono::high_resolution_clock::now().time_since_epoch().count() * 1.0 / 1e6;
+            target_pub_ts_ms =
+                original_pub_ts_ms + server_client_time_diff_ms_.load() + FLAGS_dispatcher_client_publish_delay_ms;
+        }
+        if (FLAGS_dispatcher_client_stable_fq_publish && now_ms < target_pub_ts_ms) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        } else {
+            std::unique_lock<std::mutex> uniqueLock(shm_message_queue_mutex_);
+            shm_message = std::move(shm_message_queue_.top());
+            shm_message_queue_.pop();
+        }
+        publishMsg(shm_message);
+    }
+}
+
+bool DispatcherClient::publishMsg(ShmMessage& shm_msg) {
+    // Reset message info
+    shm_msg.set_valid_until((ros::Time::now() + ros::Duration(10.0)).toNSec());
+    shm_msg.set_publisher_pid(static_cast<uint64_t>(getpid()));
+    shm_msg.set_publisher_name(ros::this_node::getName());
+    auto& global_shm_bus = GlobalShmBus::Get();
+    const auto& publisher_name = shm_msg.publisher_name();
+
+    // Update node and topic by current client node, we don't care where message come from
+    auto node = global_shm_bus.lookupNode(publisher_name);
+    if( !node) {
+        ipc_logger.error("Dispatcher server forwarded a message from unknown node %%",
+                         publisher_name);
+        return false;
+    }
+
+    auto topic = global_shm_bus.lookupTopic(shm_msg.ros_topic());
+    if (!topic) {
+        ipc_logger.error("Dispatcher server forwarded a message from unknown topic %%",
+                         shm_msg.ros_topic());
+        return false;
+    }
+
+    // The received message always uses EMBEDDED storage, obviously,
+    // but when injecting we ougtht to respect settings such as
+    // max_embedded_message_size, so repackage if necessary.
+    bool should_inject {false};
+    if (shm_msg.storage_method() != ShmMessage::EMBEDDED) {
+        ipc_logger.error("Dispatcher server forwarded a message with storage method %%",
+                                ShmMessage::StorageMethod_Name(shm_msg.storage_method()));
+    } else if (shm_msg.payload().size() <= FLAGS_ipc_pubsub_publisher_max_embedded_message_size) {
+        should_inject = true;
+    } else {
+        if (FLAGS_ipc_pubsub_publisher_use_shm_allocators) {
+            char injected_object_name[256];
+            std::snprintf(injected_object_name, sizeof(injected_object_name),
+                            "injected_msg_%s_%lu_%lu",
+                            shm_msg.publisher_name().c_str(),
+                            shm_msg.publisher_pid(),
+                            ros::WallTime::now().toNSec());
+
+            auto repackaged = detail::ShmAllocators::TryAllocate(injected_object_name,
+                                                                 shm_msg.payload().size());
+            if (!repackaged) {
+                ipc_logger.error("Failed to allocate %% bytes for repackaging fowarded message on topic %% from node %%",
+                                 shm_msg.payload().size(),
+                                 shm_msg.ros_topic(),
+                                 shm_msg.publisher_name());
+            } else {
+                std::memcpy(repackaged.get(),
+                            shm_msg.payload().data(),
+                            shm_msg.payload().size());
+                auto shm_allocator_message = detail::InterimRepresentationObjectPool<ShmAllocatorMessage>::GetOne();
+                shm_allocator_message->set_shm_allocator_name(repackaged.getAllocator()->getName());
+                shm_allocator_message->set_shm_object_name(std::move(repackaged.name));
+                shm_allocator_message->set_shm_object_offset_hint(repackaged.getAllocatorOffsetHint());
+                shm_allocator_message->set_message_size(shm_msg.payload().size());
+                if (shm_allocator_message->SerializeToString(shm_msg.mutable_payload())) {
+                    shm_msg.set_storage_method(ShmMessage::SHM_ALLOCATOR);
+                    const auto cleanup_time = ros::Time::now() +
+                        ros::Duration(FLAGS_ipc_pubsub_publisher_shm_keepalive_time);
+                    detail::PublisherImpl::EnqueueShmCleanup({cleanup_time, "", std::move(repackaged)});
+                    should_inject = true;
+                } else {
+                    ipc_logger.error("Failed to serialize ShmAllocatorMessage when repackaging injected message "
+                                        "on topic %% from node %%",
+                                        shm_msg.ros_topic(),
+                                        shm_msg.publisher_name());
+                }
+            }
+        } else if (FLAGS_ipc_pubsub_publisher_use_shm_tape_allocators) {
+            auto& allocator = GlobalShmBus::Get().getSharedTapeAllocator();
+            auto payload_size = shm_msg.payload().size();
+            auto lifetime = (payload_size < FLAGS_shm_bus_tape_allocator_short_live_size)
+                                    ? shm_tape_allocator::ObjectLifetime::STANDARD : shm_tape_allocator::ObjectLifetime::SHORT;
+            auto offset = allocator.allocate(payload_size, lifetime);
+            if (!offset) {
+                ipc_logger.error("ShmTapeAllocator failed to allocate %% bytes for repackaging forwarded message on topic %% "
+                                 "from remote node %%",
+                                 payload_size,
+                                 shm_msg.ros_topic(),
+                                 shm_msg.publisher_name());
+                should_inject = false;
+            } else {
+                auto repackaged = GlobalShmBus::Get().getSharedMemoryManager().get_address_from_handle(offset);
+                if (!repackaged) {
+                    ipc_logger.error("Failed get address from handle offset %%", offset);
+                    return false;
+                }
+                auto payload_data = shm_msg.payload().data();
+                std::memcpy(repackaged,
+                            payload_data,
+                            payload_size);
+
+                auto shm_allocator_message = detail::InterimRepresentationObjectPool<ShmTapeAllocatorMessage>::GetOne();
+                shm_allocator_message->set_shm_object_offset(offset);
+                shm_allocator_message->set_message_size(payload_size);
+                if (shm_allocator_message->SerializeToString(shm_msg.mutable_payload())) {
+                    shm_msg.set_storage_method(ShmMessage::SHM_TAPE_ALLOCATOR);
+                    should_inject = true;
+                } else {
+                    ipc_logger.error("Failed to serialize ShmTapeAllocatorMessage when repackaging injected message "
+                                     "on topic %% from remote node %%",
+                                     shm_msg.ros_topic(),
+                                     shm_msg.publisher_name());
+                    should_inject = false;
+                }
+            }
+        } else {
+            // Not supported
+            ipc_logger.error("Repackaging method is not supported");
+            should_inject = false;
+        }
+    }
+
+    if (!should_inject) {
+        return false;
+    }
+
+    if (FLAGS_shm_enable_topic_specific_ring_buffer) {
+        findOrCreateMessageSequence(shm_msg.ros_topic());
+    }
+    if (0 == global_shm_bus.publish(node, topic, shm_msg)) {
+        ipc_logger.error("Failed to inject incoming message on topic %% from node %%",
+                         shm_msg.ros_topic(),
+                         shm_msg.publisher_name());
+        return false;
+    }
+    return true;
+}
+
+ShmValuePtr<GlobalShmBus::TopicSpecificMessageSequence>
+DispatcherClient::findOrCreateMessageSequence(const std::string& topic_name) {
+    return GlobalShmBus::Get().createMessageSequence(topic_name);
+}
+
+}  // namespace dispatcher
+}  // namespace drive
