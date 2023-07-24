@@ -666,6 +666,8 @@ git push upstream master-20230616
 - 查看某个进程所占用的资源
   - pidof PROCESS_NAME
   - top -p PID
+- 根据进程名称杀死所有这个名字的进程
+  - kill -9 \$(pgrep -f "/usr/bin/python /opt/ros/melodic/bin/rosmaster --core")
 ## ssh相关
 - 登陆脚本
   - vi go 输入以下内容 chmod +x go 然后添加脚本所在位置到环境变量
@@ -725,11 +727,15 @@ endif
 
 ## POSTDB数据库
 ### 远程连接
-```
+```bash
 sudo apt install postgresql postgresql-contrib # 安装psql命令
 psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据库 后续输入密码
 ```
 
+### 常用命令
+```sql
+
+```
 ### Questions
 - 为什么Failed to connect via socket_fd 16 to '192.168.2.14' on port 13006: 'Operation already in progress'
 - 为什么Failed to connect via socket_fd
@@ -740,8 +746,6 @@ psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据�
   xclip -sel clip file_name
   ```
 - 把公钥传送到别的服务器
-
-
 
 - 打印机
   - 477打印机

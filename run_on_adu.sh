@@ -17,4 +17,4 @@ export ROS_MASTER_URI=http://127.0.0.1:11311
 export PLUSAI_DISPATCHER_SERVER_IP_ADDRESS=192.168.2.14
 echo $PLUSAI_DISPATCHER_SERVER_IP_ADDRESS
 cd /opt/plusai/bin
-./dispatcher_client
+./dispatcher_client --dispatcher_decompress

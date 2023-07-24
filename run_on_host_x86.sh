@@ -1,4 +1,5 @@
-echo "GOTO bj4 at 2023年 07月 20日 星期四 19:02:03 CST" > LOGX
+echo "GOTO bj4 at 2023年 07月 24日 星期一 11:40:00 CST" > LOGX
+sudo rm -rf /dev/shm/*
 docker cp /home/chengzhen/tmp/run_on_docker_dispatcher_server.sh yonghui_drive:/home/yonghui
 docker exec -itd yonghui_drive /bin/bash -xe run_on_docker_dispatcher_server.sh
 

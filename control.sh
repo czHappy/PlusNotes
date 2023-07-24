@@ -22,6 +22,7 @@ echo "start drive container and run dispatcher_server"
 script_run_on_host_x86="run_on_host_x86.sh"
 cat > $script_run_on_host_x86 << EOF
 echo "GOTO bj4 at $(date)" > LOGX
+sudo rm -rf /dev/shm/*
 docker cp /home/chengzhen/tmp/$script_run_on_docker_dispatcher_server yonghui_drive:/home/yonghui
 docker exec -itd yonghui_drive /bin/bash -xe ${script_run_on_docker_dispatcher_server}
 
@@ -64,7 +65,7 @@ export ROS_MASTER_URI=$ros_master_uri
 export PLUSAI_DISPATCHER_SERVER_IP_ADDRESS=$dispatcher_server_address
 echo \$PLUSAI_DISPATCHER_SERVER_IP_ADDRESS
 cd /opt/plusai/bin
-./dispatcher_client
+./dispatcher_client --dispatcher_decompress
 EOF
 
 echo "scp script"
