@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 def YUV2JPG(inputFileName, savepath):
-    iWidth, iHeight = 320, 160 # 540->544 16 multiple
+    iWidth, iHeight = 960, 544 # 540->544 16 multiple
     iImageSize = iWidth * iHeight * 3 // 2
 
     fpln = open(inputFileName, "rb+")
@@ -24,7 +24,10 @@ def YUV2JPG(inputFileName, savepath):
 
     cv2.imwrite(savepath, rgbImg)
 
+
 # 示例用法
-inputFileName = "outputfile"
-savepath = "output.jpg"
+idx = 60
+inputFileName = "/home/plusai/Downloads/outyuv420/outputfile" + str(idx)
+savepath = "output"+str(idx) + ".jpg"
+idx = idx + 1
 YUV2JPG(inputFileName, savepath)

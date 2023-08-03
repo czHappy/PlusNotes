@@ -704,6 +704,26 @@ esac
 
 sshpass -p "$PASSWORD" ssh $USER@$IP
 ```
+### jenkins slaves
+- 192.168.11.246 slave2
+
+- 192.168.11.247 slave3
+
+- 172.16.100.187 slave4
+
+- 172.16.100.217 slave5
+
+- 172.16.100.41 slave6
+
+- 172.16.100.135 slave7
+
+- 172.16.100.76 salve8
+
+
+
+yonghui.rao
+  12:56 PM
+172.16.100.76 salve8
 ### gdb 调试
 - 编译时工具链由mk指定
 ```bash
@@ -732,6 +752,36 @@ sudo apt install postgresql postgresql-contrib # 安装psql命令
 psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据库 后续输入密码
 ```
 
+
+
+## 自动驾驶全栈
+### 节点含义
+- vehicle_can
+- app_watchdog
+- gmsl_cam
+- sense_dms_camera
+- rear_radar
+- bumper_radar
+- side_radar
+- rs_lidar
+- inno_lidar
+- hirain_dms_camera
+- obstacle
+- lane
+- prediction
+- planning
+- control
+- event_recorder
+- system_metrics
+- map_sensor
+- localization
+- auto_calibration
+- uds_server_node
+- ublox
+- dispatcher_server
+
+
+## Other
 ### 常用命令
 ```sql
 
