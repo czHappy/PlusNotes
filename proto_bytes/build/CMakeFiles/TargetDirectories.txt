@@ -1,0 +1,3 @@
+/home/plusai/Documents/PlusNotes/PlusNotes/proto_bytes/build/CMakeFiles/main.dir
+/home/plusai/Documents/PlusNotes/PlusNotes/proto_bytes/build/CMakeFiles/edit_cache.dir
+/home/plusai/Documents/PlusNotes/PlusNotes/proto_bytes/build/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+message YourMessage {
+    bytes byte_field = 1;
+}

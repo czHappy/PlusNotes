@@ -57,6 +57,15 @@
         "typeinfo": "cpp",
         "unordered_set": "cpp",
         "set": "cpp",
-        "cstring": "cpp"
+        "cstring": "cpp",
+        "map": "cpp",
+        "fstream": "cpp",
+        "bitset": "cpp",
+        "complex": "cpp",
+        "list": "cpp",
+        "optional": "cpp",
+        "cinttypes": "cpp",
+        "typeindex": "cpp",
+        "variant": "cpp"
     }
 }

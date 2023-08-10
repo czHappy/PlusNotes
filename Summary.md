@@ -672,6 +672,10 @@ git push upstream master-20230616
 - 登陆脚本
   - vi go 输入以下内容 chmod +x go 然后添加脚本所在位置到环境变量
   - go 112即可ssh到112上
+
+### 请使用AD账号登陆192.168.11.230
+
+Plusai98
 ```sh
 #!/bin/bash
 
@@ -755,6 +759,10 @@ psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据�
 
 
 ## 自动驾驶全栈
+### ROS
+- rostopic hz /vehicle/control_cmd
+- ipc_topic hz /side_left_camera/image_color/compressed
+- rosnode list
 ### 节点含义
 - vehicle_can
 - app_watchdog
@@ -780,6 +788,8 @@ psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据�
 - ublox
 - dispatcher_server
 
+### BBOX
+- a black box project for l4e trucks data collection
 
 ## Other
 ### 常用命令
@@ -796,6 +806,19 @@ psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据�
   xclip -sel clip file_name
   ```
 - 把公钥传送到别的服务器
+```
+ssh-copy-id -i ~/.ssh/my_public_key.pub user@hostname
+```
+- iperf带宽测试
+```
+sudo apt update
+sudo apt install iperf
+# 在节点1(IP：192.168.10.184)上起iperf服务器，端口号设置19989, 使用MB/s作为单位
+iperf -s -p 19989 -f M 
+# 在节点2上起iperf客户端，指定服务器的IP地址和端口
+iperf -c 192.168.10.184 -p 19989 
+```
+
 
 - 打印机
   - 477打印机
