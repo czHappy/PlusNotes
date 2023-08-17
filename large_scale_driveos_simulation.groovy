@@ -146,10 +146,7 @@ node("l4e-perf-slaves") {
     }
 
     stage("Download Bag"){
-        def command = """
-            wget ${bag_addr}
-        """
-        sh(script: command, returnStdout: true)
+        sh(script: "wget ${bag_addr}", returnStdout: true)
     }
 
     stage("Start Software Stack"){
