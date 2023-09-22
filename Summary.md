@@ -529,7 +529,31 @@ docker push docker.plusai.co:5050/plusai-l4e-phase1-p1.1/selective_data_monitor:
 docker pull docker.plusai.co:5050/plusai-l4e-phase1-p1.1/selective_data_monitor:latest # 拉取镜像
 ```
 
-
+### plusai drive命令
+- drive --no-gpu -i image_id
+- 命令
+```
+/usr/bin/docker run -itd --init --rm \
+  --ipc private --network host \
+  --add-host dist-cn:10.50.10.133 \
+  --hostname `hostname` \
+  -w  /home/chengzhen \
+  -v  /home/chengzhen:/home/chengzhen:rw,z \
+  -v /home/chengzhen/.ssh:/home/chengzhen/.ssh:ro \
+  -v /etc/resolv.conf:/etc/resolv.conf:ro \
+  -v /etc/hosts:/etc/hosts:ro --runtime=runc \
+  -v /run/udev:/run/udev:ro \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /etc/timezone:/etc/timezone:ro \
+  -v /opt/plusai/log:/opt/plusai/log:rw \
+  --group-add audio \
+  --runtime=runc \
+  --name chengzhen_drive_latest \
+  --privileged \
+  --user root \
+  --shm-size=4gb \
+  docker.plusai.co:5050/plusai/drive:latest /bin/bash
+```
 
 ## protobuf
 
@@ -662,7 +686,7 @@ git push upstream master-20230616
 - 跳板机： ssh chengzhen@192.168.10.241 密码chengzhen
 - 登陆路测工程师机器： ssh plusai@192.168.15.126 密码plusai
 - 登陆ADU
-  - 192.168.11.100 root PLAV2021! or plusai plusai
+  - ssh plusai@192.168.11.100  root PLAV2021! or plusai plusai
 - 查看某个进程所占用的资源
   - pidof PROCESS_NAME
   - top -p PID
@@ -801,3 +825,34 @@ psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据�
   - 477打印机
   - Ctrl + P
 /data/plusai/DoNotUseThisDirectory/20230710/1.6.1667/plusai
+
+
+## 读写文件
+```
+#include <iostream>
+#include <fstream>
+
+int main() {
+    std::fstream file;
+    file.open("data.txt", std::ios::in | std::ios::out);
+
+    if (!file.is_open()) {
+        file.open("data.txt", std::ios::out); // 创建文件
+        file << 0.0; // 写入默认值 0
+        file.close();
+        std::cout << "文件不存在，已创建文件并写入浮点数 0.0" << std::endl;
+    } else {
+        double floatValue;
+        file >> floatValue; // 从文件中读取浮点数
+        file.close();
+        std::cout << "读取的浮点数值为: " << floatValue << std::endl;
+
+        file.open("data.txt", std::ios::out); // 重新打开文件进行写入
+        file << 99.0; // 写入浮点数 99
+        file.close();
+        std::cout << "已写入浮点数 99.0" << std::endl;
+    }
+
+    return 0;
+}
+```
