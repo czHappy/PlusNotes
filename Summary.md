@@ -127,11 +127,29 @@ CMD ["/bin/sh", "-c", "/start.sh ${SELECTIVE_FLAVOR}"] # dockerfile中使用CMD�
 - 最下面可以定制自己的快捷键
   
 ### no basic auth credential
-- 没有凭证，无法从私有仓库拉去镜像
+- docker pull docker.plusai.co:5050/plusai/selective_data_monitor:209
+  - Error response from daemon: Head "https://docker.plusai.co:5050/v2/plusai/selective_data_monitor/manifests/209": no basic auth credentials
 - docker login 命令用于登陆到一个 Docker 镜像仓库，如果未指定镜像仓库地址，默认为官方仓库 Docker Hub
   - docker login -u username -p password server_name
   - Docker 会将 token 存储在 ~/.docker/config.json 文件中，从而作为拉取私有镜像的凭证。（也可以之直接将别人的config.json内容复制到自己的当中）
-
+```json
+{
+	"auths": {
+		"docker.plusai.co:5050": {
+			"auth": "c3otZG9ja2VyOkFhMTIzNDU2"
+		},
+    "dist:5000": {
+            "auth": "amVua2luczo0aXVzb2U2dno1MXR3NmJ0"
+    },
+    "dist-cn:5000": {
+            "auth": "amVua2luczo0aXVzb2U2dno1MXR3NmJ0"
+    },
+    "bj-docker.plusai.co:5050": {
+            "auth": "c3otZG9ja2VyOkFhMTIzNDU2"
+    }
+	}
+}
+```
 
 ### /etc/resolv.conf
 - /etc/resolv.conf是DNS客户机的配置文件，用于设置DNS服务器的IP地址及DNS域名，还包含了主机的域名搜索顺序。
@@ -529,7 +547,26 @@ docker push docker.plusai.co:5050/plusai-l4e-phase1-p1.1/selective_data_monitor:
 docker pull docker.plusai.co:5050/plusai-l4e-phase1-p1.1/selective_data_monitor:latest # 拉取镜像
 ```
 
+### 配置docker用户组
+```bash
+cat /etc/group | grep docker # 查找 docker 组，确认其是否存在
+groups # 列出自己的用户组，确认自己在不在 docker 组中
 
+# 如果 docker 组不存在，则添加之：
+sudo groupadd docker
+
+# 将当前用户添加到 docker 组
+sudo gpasswd -a ${USER} docker
+
+# 重启服务
+sudo service docker restart
+
+# 切换一下用户组（刷新缓存）
+newgrp - docker;
+newgrp - `groups ${USER} | cut -d' ' -f1`; # TODO：必须逐行执行，不知道为什么，批量执行时第二条不会生效
+# 或者，注销并重新登录
+pkill X
+```
 
 ## protobuf
 
@@ -750,14 +787,55 @@ endif
 ```
 
 ## POSTDB数据库
+### 基础命令
+```
+\q 结束
+\l 打印所有数据库
+\c exampledb 连接上exampledb数据库
+\dt 打印所有表
+```
+### local登陆
+```bash
+su - postgres
+CREATEUSER root WITH PASSWORD '*****';  # 新建一个用户root 注意命令以;结尾表示结束
+CREATE DATABASE exampledb OWNER root;  # 创建数据库 属主root
+GRANT ALL PRIVILEGES ON DATABASE exampledb TO root;  # 将exampledb数据库的所有权限都赋予root
+psql --username=root exampledb < exampledb.sql  # 对数据库执行vehicle_management_db_schema.sql中的命令
+```
+
 ### 远程连接
 ```bash
 sudo apt install postgresql postgresql-contrib # 安装psql命令
-psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据库 后续输入密码
+psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W  # 登陆数据库 后续输入密码 e7zYehLG#
 ```
 
+### 远程执行命令
+- pg_dump
+```bash
+ pg_dump -S root  -U root -h 172.16.100.17 -p 5432  --schema-only vehicle_management_db  -f vehicle_management_db_schema.sql
 
+ pg_dump -S root  -U root -h 172.16.100.178 -p 45432  --schema-only --table map_localization  vehicle_management_db_test   -f vehicle_management_db_map_localization.sql 
+```
+- sql
+```sql
+select pg_table_size('map_localization')
+select pg_database_size('vehicle_management_db');
+delete from tablename where ...
 
+SELECT EXISTS (
+   SELECT *
+   FROM information_schema.columns
+   WHERE table_name = 'management_data'
+     AND column_name = 'safety_barrier_compensation1'
+) AS column_exists;
+
+SELECT super_pilot_engage_button_pressed
+FROM management_data
+WHERE super_pilot_engage_button_pressed IS NOT null
+	AND vehicle_name = 'pdb-l4e-b0007'
+ 	AND vehicle_timestamp > '2024-12-30 12:38:24.628';
+
+```
 ## 自动驾驶全栈
 ### ROS
 - rostopic hz /vehicle/control_cmd
@@ -791,6 +869,10 @@ psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W #登陆数据�
 ### BBOX
 - a black box project for l4e trucks data collection
 
+### 编译
+- make package 安装包 
+- dpkg -i xxx.deb 安装包到机器
+- 一些repo依赖common 先更新common的deb包，然后重新编译这个repo
 ## Other
 ### 常用命令
 ```sql
