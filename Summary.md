@@ -1025,3 +1025,19 @@ https://www.processon.io/diagraming/65a78e8ee4b056be76f594bc chengzhen@smartxtru
 http://sz1/gtx5/dists/nfs/v3na_linux/test_package/
 https://note.youdao.com/web/#/file/recent/markdown/WEBbb497eb00014ae67f1767f3391370c59/
 http://jenkins-cn/job/edr_monitor/job/master/
+https://github.com/
+
+
+jdbc:postgresql://172.16.100.17:5432/vehicle_management_db
+172.16.100.17 5432 vehicle_management_db
+
+selective 
+jdbc:postgresql://172.16.100.56:5432/selective_record
+
+jdbc:postgresql://172.16.100.178:45432/vehicle_management_db_test
+
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'your_table_name'
+  AND column_name = 'your_column_name';
