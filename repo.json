@@ -1,0 +1,238 @@
+{
+    "repositories": [
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/calib_db.git",
+            "depth": 1,
+            "destination_dir": "calib_db/calib_db",
+            "branch": "master",
+            "name": "calib_db"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/common_protobuf.git",
+            "depth": 1,
+            "destination_dir": "common_protobuf/common_protobuf",
+            "branch": "master",
+            "name": "common_protobuf"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/common.git",
+            "depth": 10,
+            "destination_dir": "common/common",
+            "branch": "master",
+            "dependencies": [
+                "calib_db",
+                "common_protobuf"
+            ],
+            "name": "common"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/cmake.git",
+            "depth": 1,
+            "destination_dir": "cmake/cmake",
+            "branch": "master",
+            "name": "cmake"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/event_recorder.git",
+            "depth": 10,
+            "destination_dir": "event_recorder/event_recorder",
+            "branch": "master",
+            "dependencies": [
+                "common",
+                "fastbag"
+            ],
+            "name": "event_recorder"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/drive.git",
+            "depth": 100,
+            "destination_dir": "drive/drive",
+            "branch": "master",
+            "dependencies": [
+                "common",
+                "fastbag",
+                "models",
+                "plusai_ublox_m8l_driver"
+            ],
+            "name": "drive"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/models.git",
+            "depth": 1,
+            "destination_dir": "models/models",
+            "branch": "master",
+            "name": "models",
+            "submodules": false,
+            "model_deb_url": "http://192.168.10.18:21985/p1-20211108-plusai-model_1.0.999999_amd64.deb",
+            "model_data_deb_url": "http://192.168.10.18:21985/p1-20221020-plusai-model-data_1.0.999999_all.deb"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/tools.git",
+            "depth": 5,
+            "destination_dir": "tools/tools",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "tools"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/watchdog.git",
+            "depth": 10,
+            "destination_dir": "watchdog/watchdog",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "watchdog"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/fastbag.git",
+            "depth": 2,
+            "destination_dir": "fastbag/fastbag",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "fastbag"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/conti_radar.git",
+            "depth": 2,
+            "destination_dir": "conti_radar/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "conti_radar"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/bosch_radar.git",
+            "depth": 1,
+            "destination_dir": "bosch_radar/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "bosch_radar"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/gmsl_cam.git",
+            "depth": 3,
+            "destination_dir": "gmsl_cam/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "gmsl_cam"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/plusai_ublox_m8l_driver.git",
+            "depth": 2,
+            "destination_dir": "plusai_ublox_m8l_driver/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "plusai_ublox_m8l_driver"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/vehicle_nodes.git",
+            "depth": 10,
+            "destination_dir": "vehicle_nodes/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "vehicle_nodes"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/livox_driver.git",
+            "depth": 1,
+            "destination_dir": "livox/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "livox_driver"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/robosense_lidar.git",
+            "depth": 1,
+            "destination_dir": "robosense_lidar/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "robosense_lidar"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/ota_client.git",
+            "depth": 1,
+            "destination_dir": "ota_client/src",
+            "branch": "master",
+            "name": "ota_client"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/runtime.git",
+            "depth": 5,
+            "destination_dir": "runtime/runtime",
+            "branch": "master",
+            "name": "runtime"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/hirain_dms_cam.git",
+            "depth": 5,
+            "destination_dir": "hirain_dms_cam/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "hirain_dms_cam"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/factory_calibration.git",
+            "depth": 5,
+            "destination_dir": "factory_calibration/factory_calibration",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "factory_calibration"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/innovusion_falcon_lidar.git",
+            "depth": 1,
+            "destination_dir": "innovusion_falcon_lidar/src",
+            "branch": "master",
+            "dependencies": [
+                "common"
+            ],
+            "name": "innovusion_falcon_lidar"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/external.git",
+            "depth": 1,
+            "destination_dir": "external",
+            "branch": "master",
+            "name": "external"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/external-data.git",
+            "depth": 1,
+            "destination_dir": "external-data",
+            "branch": "master",
+            "name": "external-data"
+        },
+        {
+            "url": "git@github-cn.plus.ai:PlusAI/simulator.git",
+            "depth": 1,
+            "destination_dir": "simulator/simulator",
+            "branch": "master",
+            "dependencies": [
+                "drive"
+            ],
+            "name": "simulator"
+        }
+    ]
+}

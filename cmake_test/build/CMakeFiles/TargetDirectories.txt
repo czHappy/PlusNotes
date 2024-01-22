@@ -1,0 +1,4 @@
+/home/plusai/Documents/PlusNotes/PlusNotes/cmake_test/build/CMakeFiles/MyLibrary.dir
+/home/plusai/Documents/PlusNotes/PlusNotes/cmake_test/build/CMakeFiles/MyApp.dir
+/home/plusai/Documents/PlusNotes/PlusNotes/cmake_test/build/CMakeFiles/edit_cache.dir
+/home/plusai/Documents/PlusNotes/PlusNotes/cmake_test/build/CMakeFiles/rebuild_cache.dir

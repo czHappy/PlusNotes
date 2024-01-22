@@ -74,6 +74,13 @@ int main() {
     std::cout << "Field 2: " << field2 << std::endl;
     std::cout << "Field 3: " << field3 << std::endl;
     std::cout << "Field 4: " << field4 << std::endl;
+    int a = 1001;
+    if(a > 5 or a < 900){
+        std::cout<<"s1"<<std::endl;
+    }
+    else{
+        std::cout<<"s2"<<std::endl;
+    }
 
     return 0;
 }

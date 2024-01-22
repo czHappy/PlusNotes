@@ -69,7 +69,7 @@ zsh
 
 
 
-## 2023.5.6
+## 2023.5.6 
 ### set指令
 - set -x
   - 默认情况下，脚本执行后，屏幕只显示运行结果，没有其他内容。如果多个命令连续执行，它们的运行结果就会连续输出。有时会分不清，某一段内容是什么命令产生的。
@@ -568,6 +568,54 @@ newgrp - `groups ${USER} | cut -d' ' -f1`; # TODO：必须逐行执行，不知�
 pkill X
 ```
 
+### 复用host ssh key
+```
+docker run -itd --name drive-cz -w /home/plusai/workspace -v /home/plusai/workspace:/home/plusai/workspace:rw,z -v /home/plusai/.ssh:/home/plusai/.ssh docker.plusai.co:5050/plusai/drive:latest bash
+
+# 在docker中执行
+eval $(ssh-agent -s)
+ssh-add id_rsa
+ssh-add id_ed25519
+```
+
+## event-recorder
+### brain
+- 以mgmt_data为例
+- ROSEventRecorderProgram
+  - init
+    - init_subscribers(_brain, subs, *_node_handle)
+      - ingest
+      - doIngest
+        - processMessage
+          - processMessageForDestination
+            - fc->collect(topic, last)
+
+## ibox-service
+- ServiceWorker Run()
+  - connection_handler_ InitScheduler InitStorage
+  - socket_server_ AsyncAccept(connection_handler_)
+    - async_accept -> HandleAccept ->SessionStart(while true)
+      - socket_->async_read_some ->OnSockRead
+        - command_handler.Process
+  
+
+## ROS Plusai
+### ROSProgram plusai
+- common/common/src/base/program.cpp
+- run()
+  - init_ros
+  - set_gflags_from_rosparams
+  - init_gflags
+  - setup_glog_logging
+  - init_ros_logging
+  - setup_metrics
+  - _scheduler
+  - init_ipc
+  - **init** need override
+  - _run_publisher ipc::advertise
+  - **go()** need override
+  - cleanup()
+  - gameover
 ## protobuf
 
 ### 定义
@@ -672,6 +720,9 @@ make
   - 永久修改：sudo /sbin/sysctl -w kernel.core_pattern=/var/log/%e.core.%p
 
 ## PLUSAI常用
+### 服务器
+- sz1
+  - baseline路径： /data4/gtx5/mirror/gtx5/dists/single_node_perf_test
 ### ADU测试
 - 重启ADU
   - common_if_testapp -tegrareset 重启ADU
@@ -873,6 +924,17 @@ WHERE super_pilot_engage_button_pressed IS NOT null
 - make package 安装包 
 - dpkg -i xxx.deb 安装包到机器
 - 一些repo依赖common 先更新common的deb包，然后重新编译这个repo
+
+## 车端配置
+- 环境变量初始化
+  - /opt/plusai/launch/pdb-l4e-b0001/setup.sh
+    - /opt/plusai/launch/pdb-l4e/setup.sh
+      - /opt/plusai/launch/l4e-common/setup.sh
+- hamlaunch启动进程
+  - systemd启动流程： ~/.config/systemd/user/event_recorder.service
+  - 环境变量和参数： /opt/plusai/config/hamlaunch.prototxt.pdb-l4e-lab001
+  - 
+
 ## Other
 ### 常用命令
 ```sql
@@ -906,3 +968,60 @@ iperf -c 192.168.10.184 -p 19989
   - 477打印机
   - Ctrl + P
 /data/plusai/DoNotUseThisDirectory/20230710/1.6.1667/plusai
+
+
+
+## proto yonghui
+
+- /opt/plusai/conf/event_recorder/recorder_cfg.prototxt.pdb-l4e-lab001
+  - inherit: "recorder_cfg.prototxt.pdb-l4e-production"
+- /opt/plusai/conf/event_recorder/modules-j7-l4e/common_config.prototxt
+  - sync_config: url删掉
+- ST_EDR => ST_IBOX
+- 4g路由检查设置成false
+- ibox端启动
+  - ./ibox_service --db_path=/home/chengzhen/workspace/ibox_service/ibox_service/build/db_path --edr_chunk_size=102 --edr_chunk_count=2 --aeb_chunk_size=300 --aeb_chunk_count=3 --log_dir=/home/chengzhen/workspace/ibox_service/ibox_service/build/log_path
+  - python3 read-proto.py /home/chengzhen/workspace/ibox_service/ibox_service/build/db_path/edr_5000_1 > logx
+- ibox-service test
+  - LC_ALL=C TMPDIR=/home/chengzhen/workspace/ibox_service/ibox_service/tmp_build make -j -C build  clean check package
+
+## 打包
+```
+{ "repositories": [
+  {
+    "url": "git@github-cn.plus.ai:chengzhen/event_recorder.git",
+    "depth": 10,
+    "destination_dir": "event_recorder/event_recorder",
+    "branch": "ibox-message",
+    "dependencies": [
+        "common",
+        "fastbag"
+    ],
+    "name": "event_recorder"
+  }
+  ]
+}
+```
+
+
+## gtest
+### subprocess abort
+- 安装改repo的所有依赖repo生成的package
+
+turn_lever,super_pilot_engage_button_pressed,gear_engaged,aeb_soft_switch,ldw_soft_switch,steering_report_override,retarder_level_selected,
+                        safety_strategy,
+                        safety_strategy_trajectory
+
+
+
+
+### 书签
+http://tt.pluscn.cn/
+https://bagdb.pluscn.cn/
+https://grafana.pluscn.cn/d/llS0Mw6nk/real-time-system-metrics?orgId=1
+https://github-cn.plus.ai/PlusAI/v3na_linux_bsp
+http://jenkins-cn/job/v3na_linux_pack_perf/
+https://www.processon.io/diagraming/65a78e8ee4b056be76f594bc chengzhen@smartxtruck.com
+http://sz1/gtx5/dists/nfs/v3na_linux/test_package/
+https://note.youdao.com/web/#/file/recent/markdown/WEBbb497eb00014ae67f1767f3391370c59/
+http://jenkins-cn/job/edr_monitor/job/master/

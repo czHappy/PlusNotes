@@ -1,0 +1,1 @@
+/usr/bin/c++ -rdynamic CMakeFiles/MyApp.dir/main.cpp.o -o MyApp  -Wl,-rpath,/home/plusai/Documents/PlusNotes/PlusNotes/cmake_test/build libMyLibrary.so 
