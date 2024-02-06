@@ -720,6 +720,16 @@ make
   - 永久修改：sudo /sbin/sysctl -w kernel.core_pattern=/var/log/%e.core.%p
 
 ## PLUSAI常用
+### 车端环境变量
+- hamlaunch 环境变量
+  - /home/plusai/.config/systemd/user、event_recorder.service 表示event-recorder hamlaunch 启动的动作
+    - /opt/plusai/config/systemd/pdb-l4e-lab001/event_recorder.env 写入了需要的环境变量
+
+- 某个节点的环境变量查询
+  - pidof 节点
+  - cat cat /proc/<PID>/environ
+
+
 ### 服务器
 - sz1
   - baseline路径： /data4/gtx5/mirror/gtx5/dists/single_node_perf_test
@@ -748,7 +758,10 @@ git cherry-pick 1311102303e7ede88ee5a5914b1893253371ae5d
 git push upstream master-20230616
 ```
 - 跳板机： ssh chengzhen@192.168.10.241 密码chengzhen
-- 登陆路测工程师机器： ssh plusai@192.168.15.126 密码plusai
+- 登陆路测工程师机器： ssh plusai@192.168.15.126 密码plusai  运营车密码：5uY^M!7d
+hamlaunch stop --modules event_recorder
+hamlaunch start --modules event_recorder
+vi /opt/plusai/conf/event_recorder/modules-j7-l4e/common_config.prototxt
 - 登陆ADU
   - 192.168.11.100 root PLAV2021! or plusai plusai
 - 查看某个进程所占用的资源
@@ -866,6 +879,8 @@ psql -h 172.16.100.17 -p 5432 -U root -d vehicle_management_db -W  # 登陆数�
  pg_dump -S root  -U root -h 172.16.100.17 -p 5432  --schema-only vehicle_management_db  -f vehicle_management_db_schema.sql
 
  pg_dump -S root  -U root -h 172.16.100.178 -p 45432  --schema-only --table map_localization  vehicle_management_db_test   -f vehicle_management_db_map_localization.sql 
+
+ psql -U root -h 172.16.100.178 -p 45432 -d vehicle_management_db_test -f vehicle_management_db_schema-vehicle_iccid.sql
 ```
 - sql
 ```sql
@@ -886,6 +901,21 @@ WHERE super_pilot_engage_button_pressed IS NOT null
 	AND vehicle_name = 'pdb-l4e-b0007'
  	AND vehicle_timestamp > '2024-12-30 12:38:24.628';
 
+CREATE TABLE driver_behavior (
+    vehicle_name character varying,
+    vehicle_timestamp timestamp without time zone,
+    super_pilot_engage_button_pressed boolean,
+    gear_engaged boolean,
+    aeb_soft_switch boolean,
+    ldw_soft_switch boolean,
+    steering_report_override boolean,
+    safety_strategy real,
+    safety_strategy_trajectory real,
+    retarder_level_selected real
+);
+
+ALTER TABLE driver_behavior OWNER TO root;
+CREATE INDEX driver_behavior_idx ON driver_behavior USING btree (vehicle_name, vehicle_timestamp);
 ```
 ## 自动驾驶全栈
 ### ROS
@@ -977,8 +1007,28 @@ iperf -c 192.168.10.184 -p 19989
   - inherit: "recorder_cfg.prototxt.pdb-l4e-production"
 - /opt/plusai/conf/event_recorder/modules-j7-l4e/common_config.prototxt
   - sync_config: url删掉
-- ST_EDR => ST_IBOX
-- 4g路由检查设置成false
+- modules-j7-l4e/destinations_pdb_production.prototxt
+  - ST_EDR => ST_IBOX
+- modules-j7-l4e/destinations_pdb_production.prototxt
+  - 4g路由检查设置成false
+- transfer_channels_pdb_production.prototxt
+  - transfer_channel:{
+      url: "ibox://192.168.2.14:5000" # 修改Ip
+      name: "ibox_channel"
+      protocol: IBOX
+      timeout_ms: 3000
+      connect_timeout_ms: 500
+      nodelay: false
+      max_data_waiting_seconds: 1
+      expected_block_bytes: 1048576
+      queue: {
+        max_queue_size : 104857600
+        type : FIFO
+        full_threshold : 0.95
+      }
+    }
+
+
 - ibox端启动
   - ./ibox_service --db_path=/home/chengzhen/workspace/ibox_service/ibox_service/build/db_path --edr_chunk_size=102 --edr_chunk_count=2 --aeb_chunk_size=300 --aeb_chunk_count=3 --log_dir=/home/chengzhen/workspace/ibox_service/ibox_service/build/log_path
   - python3 read-proto.py /home/chengzhen/workspace/ibox_service/ibox_service/build/db_path/edr_5000_1 > logx
@@ -1041,3 +1091,108 @@ SELECT column_name
 FROM information_schema.columns
 WHERE table_name = 'your_table_name'
   AND column_name = 'your_column_name';
+
+
+### vescode 
+
+- 改键
+{
+  "key": "ctrl+v",
+  "command": "workbench.action.terminal.paste",
+  "when": "terminalFocus && terminalHasBeenCreated || terminalFocus && terminalProcessSupported"
+}
+{
+  "key": "ctrl+c",
+  "command": "workbench.action.terminal.copySelection",
+  "when": "terminalTextSelectedInFocused || terminalFocus && terminalHasBeenCreated && terminalTextSelected || terminalFocus && terminalProcessSupported && terminalTextSelected || terminalFocus && terminalTextSelected && terminalTextSelectedInFocused || terminalHasBeenCreated && terminalTextSelected && terminalTextSelectedInFocused || terminalProcessSupported && terminalTextSelected && terminalTextSelectedInFocused"
+}
+
+
+targets: {
+    name: "edr_server"
+    type: ST_EDR
+    # EDR sends a bunch of smaller chunks typically, so combine those chunks
+    # into a block of this size (and force it to flush every half second).
+    min_chunk_block_size: 50
+    flush_block_period_ms: 500
+    flush_collector_period_ms: 1500
+    nodelay: false
+    transfer_channel: "ibox_channel"
+    record_level: RL_FULL
+    selector: {
+      link: "/vehicle/control_cmd[0]"
+    }
+    selector: {
+      link: "/vehicle/dbw_reports[0]"
+    }
+    selector: {
+      link: "/localization/state[1]"
+    }
+    selector: {
+      link: "/front_left_camera/image_color/quarter/compressed"
+    }
+    selector: {
+      link: "/side_left_camera/image_color/quarter/compressed"
+    }
+    selector: {
+      link: "/side_right_camera/image_color/quarter/compressed"
+    }
+    selector: {
+      link: "/rear_left_camera/image_color/quarter/compressed"
+    }
+    selector: {
+      link: "/rear_right_camera/image_color/quarter/compressed"
+    }
+    selector: {
+      link: "/sense_dms_camera/image_color/compressed"
+    }
+    selector: {
+      link: "/watchdog/current_state[0]"
+    }
+    selector: {
+      link: "/dms_cam0/image_raw/compressed"
+    }
+    selector: {
+      link: "/planning/lead_info"
+    }
+    selector: {
+      link: "/control/status_report"
+    }
+    selector: {
+      link: "/bumper_radar/radar_tracks"
+    }
+    selector: {
+      link: "/rear_left_radar/radar_tracks"
+    }
+    selector: {
+      link: "/rear_right_radar/radar_tracks"
+    }
+  }
+
+
+  ## 运营车
+  - 2024.1.26
+  zto_10_vehicles = [
+    "pdb-l4e-LJ18R2BLXP3304744",
+    "pdb-l4e-LJ18R2BL8P3304788",
+    "pdb-l4e-LJ18R2BLXP3304789",
+    "pdb-l4e-LJ18R2BL6P3304790",
+    "pdb-l4e-LJ18R2BL8P3304791",
+    "pdb-l4e-LJ18R2BLXP3304792",
+    "pdb-l4e-LJ18R2BL1P3304793",
+    "pdb-l4e-LJ18R2BL3P3304794",
+    "pdb-l4e-LJ18R2BL5P3304795",
+    "pdb-l4e-LJ18R2BL7P3304796"
+]
+ane_6_vehicles = [
+    "pdb-l4e-LJ18R2BL6P3305194",
+    "pdb-l4e-LJ18R2BL8P3305195",
+    "pdb-l4e-LJ18R2BLXP3305196",
+    "pdb-l4e-LJ18R2BL1P3305197",
+    "pdb-l4e-LJ18R2BL3P3305198",
+    "pdb-l4e-LJ18R2BL5P3305199"
+]
+yto_5_vehicles = ["pdb-l4e-c0003", "pdb-l4e-c0004",
+                  "pdb-l4e-c0005", "pdb-l4e-c0006",
+                  "pdb-l4e-c0007"]
+zto_2_vehicles = ["pdb-l4e-c0001", "pdb-l4e-b0007"]
