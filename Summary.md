@@ -509,6 +509,17 @@ stages{
   ])
 
 ```
+
+### PR merge追踪
+- 一个job完成后会有触发这个job的commit记录,可以与repo中的commit 哈希值进行比对。
+
+```
+# http://jenkins-cn/job/edr_monitor/job/master/386/
+Revision: a027b2713c7f7c4bbe44a37d816eaa32298573e7
+Repository: git@github-cn.plus.ai:plusai/edr_monitor.git
+master
+# see https://github-cn.plus.ai/PlusAI/edr_monitor/commits/master
+```
 ## docker
 - 参阅https://yeasy.gitbook.io/docker_practice/
 - dockerfile
@@ -702,6 +713,14 @@ cmake ..
 make
 ```
 
+### python proto
+- selective server生成的proto文件
+```sh
+find /opt/plusai -name "*.py" | grep pb | grep mgmt
+vim /opt/plusai/lib/python/event_recorder/mgmt_message_pb2.py # 查看是否包含字段
+dpkg -l | grep plusai-common-pro # 查看版本 然后进入common_protobuf里的master ci对比版本号
+
+```
 
 ### clang-format
 - vscode安装C++ 扩展插件
@@ -860,6 +879,7 @@ endif
 ```
 ### local登陆
 ```bash
+# psql -U user-name -h localhost # 本地登录
 su - postgres
 CREATEUSER root WITH PASSWORD '*****';  # 新建一个用户root 注意命令以;结尾表示结束
 CREATE DATABASE exampledb OWNER root;  # 创建数据库 属主root
@@ -916,6 +936,7 @@ CREATE TABLE driver_behavior (
 
 ALTER TABLE driver_behavior OWNER TO root;
 CREATE INDEX driver_behavior_idx ON driver_behavior USING btree (vehicle_name, vehicle_timestamp);
+GRANT SELECT ON TABLE public.driver_behavior TO viewer;
 ```
 ## 自动驾驶全栈
 ### ROS
@@ -1196,3 +1217,131 @@ yto_5_vehicles = ["pdb-l4e-c0003", "pdb-l4e-c0004",
                   "pdb-l4e-c0005", "pdb-l4e-c0006",
                   "pdb-l4e-c0007"]
 zto_2_vehicles = ["pdb-l4e-c0001", "pdb-l4e-b0007"]
+
+
+
+## runtime环境变量
+
+### Makefile
+```Makefile
+# STAGING_ROOT=$(NV_PLATFORM_DIR)/targetfs
+.PHONY: hamlaunch_config
+hamlaunch_config:
+	bash runtime/runtime/hamlaunch/tools/auto_config_l4e.sh $(STAGING_ROOT)/opt j7-l4e
+	bash runtime/runtime/hamlaunch/tools/auto_config_l4e.sh $(STAGING_ROOT)/opt pdb-l4e
+```
+
+### auto_config_l4e.sh
+```sh
+bash hamlaunch_config.sh ${opt_path} ${vehicle_type} ${vehicle_name} ${tmp_folder}
+...
+bash systemd_config.sh ${opt_path} ${vehicle_type} ${vehicle_name}
+```
+
+### hamlaunch_config.sh
+```sh
+for component in ${PLUSAI_COMPONENTS}
+    ...
+    python ${main_path}/dump_ros_params.py "${file_path}" --dump_file ${tmp_folder}/rosparam.dump
+    dump_result=$?
+python convert_rosdump_to_hamlaunch_prototxt.py --dump_files ${tmp_folder}/rosparam.dump --vehicle "${vehicle}" --opt_path "${opt_path}" --drive_os "${DRIVE_OS}"
+......
+mv ${tmp_folder}/rosparam.dump.prototxt  ${tmp_folder}/hamlaunch.prototxt.${vehicle}
+cp ${tmp_folder}/hamlaunch.prototxt.${vehicle} ${opt_path}/plusai/config/
+```
+- dump_ros_params.py
+  - 
+- convert_rosdump_to_hamlaunch_prototxt.py
+  - 把roslaunch 的xml参数文件转化成hamlaunch所需要的hamlaunch.prototxt
+  - 以pdb-l4e-b0002为例子，生成/opt/plusai/config/hamlaunch.prototxt.pdb-l4e-b0002,这个配置文件供hamlaunch使用，例如hamlaunch start --modules event_recorder，那么首先会根据vehile_name找到这个配置文件，读入event_recorder这个module，包含了可执行文件的路径bin_path，需要的ros_params等。
+    - 特别是event_recorder_config这个参数，指示了/opt/plusai/conf/event_recorder/recorder_cfg.prototxt.pdb-l4e-b0002，会在event_recorder启动后的init函数中进一步读取程序运行时的参数。即/opt/plusai/config/hamlaunch.prototxt.pdb-l4e-b0002是节点的启动时参数，/opt/plusai/conf/event_recorder/recorder_cfg.prototxt.pdb-l4e-b0002是节点的运行时参数
+```
+    # many modules
+    modules {
+    name: "event_recorder"
+    bin_path: "lib/event_recorder/event_recorder"
+    extra_gflags_path: "/opt/plusai/config/event_recorder.gflags"
+    ros_args: {key: "__name", value: "event_recorder"}
+    gflags: {}
+    starting_timeout: 100
+    ros_params:{key: "event_recorder_config", value: "/opt/plusai/conf/event_recorder/recorder_cfg.prototxt.pdb-l4e-b0002"}
+    ros_params:{key: "latency_aggregator_print_abnormal_latency", value: "false"}
+    ros_params:{key: "logbuflevel", value: "2"}
+    ros_params:{key: "metrics_targets", value: "latency_aggregator"}
+    ros_params:{key: "watchdog_report_topic", value: "/event_recorder/status_report"}
+    roles: REGULAR
+    roles: CALIB
+    roles: CHECK
+    roles: VEH_PERF_CHECK
+}
+```
+### systemd_config.sh
+```sh
+python convert_hamlaunch_to_systemd.py --hamlaunch_config ${hamlaunch_config_file} \
+    --target_path ${systemd_config_path} \
+    --runtime_path ${runtime_path} \
+    --common_proto_path ${common_proto_path} \
+    --drive_root ${opt_path}/plusai \
+    --skip_env "${skip_env}" \
+    --env_file_install_path "${env_file_install_path}"
+```
+- convert_hamlaunch_to_systemd.py
+  - 生成/opt/plusai/config/systemd/pdb-l4e-b0007/event_recorder.env，即systemd维护event_recorder节点时所需要的EnvironmentFile，其中注明了车上runtime的配置，包括IPC，ROS等一些基础公共配置
+  - 生成event_recorder.service，即systemd所需要的配置文件
+```systemd
+[Unit]
+Description=event_recorder
+StartLimitIntervalSec=20
+[Service]
+ExecStartPre=/bin/bash -c 'if [ -f /tmp/ham.systemd.event_recorder.log ];then mv /tmp/ham.systemd.event_recorder.log /tmp/ham.systemd.event_recorder.$$(date +%%Y_%%m_%%d.%%H_%%M_%%S).log';fi
+ExecStart=/bin/bash -c 'export VEHICLE_NAME=`cat /data/BRAND`-`cat /data/VIN` &&  /opt/plusai/lib/event_recorder/event_recorder __name:=event_recorder `cat /opt/plusai/config/event_recorder.gflags`'
+StandardOutput=file:/tmp/ham.systemd.event_recorder.log
+StandardError=file:/tmp/ham.systemd.event_recorder.log
+LimitNOFILE=4096
+Restart=always
+RestartSec=0.1
+StartLimitBurst=3
+Type=simple
+EnvironmentFile=/opt/plusai/config/systemd/pdb-l4e-b0007/event_recorder.env
+KillSignal=2
+RestartKillSignal=2
+[Install]
+WantedBy=multi-user.target
+```
+  - 注意到vehicle_can的service配置文件，指明了--flagfile=/opt/plusai/conf/vehicle_can_node/pdb-l4e-b0007.flags和/opt/plusai/config/vehicle_can_node.gflags
+  - /opt/plusai/conf/vehicle_can_node/pdb-l4e-b0007.flags指明zf_steer_communication_error_threshold=5，而vehicle can中src/vehicle_can/include/vehicle_can_node/common/dbw_flags.h指定了PLUSAI_DECLARE_double(zf_steer_communication_error_threshold);即这个.flags文件可以指定vehile_can中的PLUSAI环境变量的赋值
+  - 问题： .flags和.gflags文件有什么区别？
+    - /bin/bash -c 'export VEHICLE_NAME=`cat /data/BRAND`-`cat /data/VIN` &&  /opt/plusai/lib/event_recorder/event_recorder --flagfile=/opt/plusai/conf/event_recorder/pdb-l4e-lab001.flags __name:=event_recorder `cat /opt/plusai/config/event_recorder.gflags`, --flagfile=/opt/plusai/conf/event_recorder/pdb-l4e-lab001.flags里写明了--upload_dms_to_mgmt=true，则FLAGS_upload_dms_to_mgmt变量就注册进了event_recorder runtime
+    - .gflags中同样写入--upload_dms_to_mgmt=true，hamlaunch start节点不起作用，并且gflags文件被自动删除
+
+
+
+## bbox
+- ssh plusai@192.168.46.90 auto+ai!
+- df -h查看空间最大的盘 /media/sda3/2024-04-09
+- ls -lat | head -n 10 看看是否在写入
+- 或者iostat -x 1对比前后两帧的写入速率 w/s
+
+
+
+## drive工具
+### 安装
+```sh
+# 参阅 https://github-cn.plus.ai/PlusAI/drive/blob/master/setup/ubuntu22_04_setup_guide.md
+
+
+# 如果在docker内无法sudo
+sudo vi /etc/sudoers
+#@includedir /etc/sudoers.d
+
+```
+
+### 启动
+```sh
+drive -i 2955a706326d --name latest-drive-cmd-docker
+# 如果编译时找不到环境变量，可能是文件属主的问题
+sudo chown plusai:plusai drive
+cd drive
+make clean
+make pacakge
+```
