@@ -737,7 +737,10 @@ dpkg -l | grep plusai-common-pro # 查看版本 然后进入common_protobuf里�
 - 修改默认路径z`
   - 临时修改：sudo echo ‘/var/log/%e.core.%p’ > /proc/sys/kernel/core_pattern
   - 永久修改：sudo /sbin/sysctl -w kernel.core_pattern=/var/log/%e.core.%p
-
+- docker上生成core文件
+  - 首先按照上面方法在宿主机上设置core文件配置
+  - docker run时加上参数 --ulimit core=-1 --security-opt seccomp=unconfined
+    - 前者就是把 Core Dump 文件的大小设置为无限制，后者是为了开放 ptrace 系列高权限的系统调用，这样我们才可以在 Docker 里面使用 GDB
 ## PLUSAI常用
 ### 车端环境变量
 - hamlaunch 环境变量
@@ -1314,6 +1317,19 @@ WantedBy=multi-user.target
     - /bin/bash -c 'export VEHICLE_NAME=`cat /data/BRAND`-`cat /data/VIN` &&  /opt/plusai/lib/event_recorder/event_recorder --flagfile=/opt/plusai/conf/event_recorder/pdb-l4e-lab001.flags __name:=event_recorder `cat /opt/plusai/config/event_recorder.gflags`, --flagfile=/opt/plusai/conf/event_recorder/pdb-l4e-lab001.flags里写明了--upload_dms_to_mgmt=true，则FLAGS_upload_dms_to_mgmt变量就注册进了event_recorder runtime
     - .gflags中同样写入--upload_dms_to_mgmt=true，hamlaunch start节点不起作用，并且gflags文件被自动删除
 
+## bag
+
+
+```
+# 本地查看bag信息
+fastbag info -i china-aeb.db
+# 查看bag中的某一个topic数据
+plusecho -b china-aeb.db /vehicle/dbw_reports > dbw 2>&1
+# 车端echo 指定 topic
+plusecho2 -topic /vehicle/dbw_reports
+# grep 筛选
+cat cs | grep POSSIBLE_COLLISION_DETECTED_BASED_ON_DELTA_V -A 1 | grep "value: 0" | wc -l
+```
 
 
 ## bbox
