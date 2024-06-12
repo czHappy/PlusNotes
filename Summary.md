@@ -751,6 +751,8 @@ dpkg -l | grep plusai-common-pro # 查看版本 然后进入common_protobuf里�
   - pidof 节点
   - cat cat /proc/<PID>/environ
 
+### drive镜像
+- proto路径： /opt/plusai/common/include/event_recorder
 
 ### 服务器
 - sz1
@@ -940,6 +942,15 @@ CREATE TABLE driver_behavior (
 ALTER TABLE driver_behavior OWNER TO root;
 CREATE INDEX driver_behavior_idx ON driver_behavior USING btree (vehicle_name, vehicle_timestamp);
 GRANT SELECT ON TABLE public.driver_behavior TO viewer;
+```
+
+### 创建只读用户
+
+```
+CREATE USER reader WITH ENCRYPTED PASSWORD 'zhijianiubiPLUS+';
+ALTER USER reader SET default_transaction_read_only=on;
+GRANT USAGE ON SCHEMA public to reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA public to reader;
 ```
 ## 自动驾驶全栈
 ### ROS
@@ -1132,97 +1143,6 @@ WHERE table_name = 'your_table_name'
 }
 
 
-targets: {
-    name: "edr_server"
-    type: ST_EDR
-    # EDR sends a bunch of smaller chunks typically, so combine those chunks
-    # into a block of this size (and force it to flush every half second).
-    min_chunk_block_size: 50
-    flush_block_period_ms: 500
-    flush_collector_period_ms: 1500
-    nodelay: false
-    transfer_channel: "ibox_channel"
-    record_level: RL_FULL
-    selector: {
-      link: "/vehicle/control_cmd[0]"
-    }
-    selector: {
-      link: "/vehicle/dbw_reports[0]"
-    }
-    selector: {
-      link: "/localization/state[1]"
-    }
-    selector: {
-      link: "/front_left_camera/image_color/quarter/compressed"
-    }
-    selector: {
-      link: "/side_left_camera/image_color/quarter/compressed"
-    }
-    selector: {
-      link: "/side_right_camera/image_color/quarter/compressed"
-    }
-    selector: {
-      link: "/rear_left_camera/image_color/quarter/compressed"
-    }
-    selector: {
-      link: "/rear_right_camera/image_color/quarter/compressed"
-    }
-    selector: {
-      link: "/sense_dms_camera/image_color/compressed"
-    }
-    selector: {
-      link: "/watchdog/current_state[0]"
-    }
-    selector: {
-      link: "/dms_cam0/image_raw/compressed"
-    }
-    selector: {
-      link: "/planning/lead_info"
-    }
-    selector: {
-      link: "/control/status_report"
-    }
-    selector: {
-      link: "/bumper_radar/radar_tracks"
-    }
-    selector: {
-      link: "/rear_left_radar/radar_tracks"
-    }
-    selector: {
-      link: "/rear_right_radar/radar_tracks"
-    }
-  }
-
-
-  ## 运营车
-  - 2024.1.26
-  zto_10_vehicles = [
-    "pdb-l4e-LJ18R2BLXP3304744",
-    "pdb-l4e-LJ18R2BL8P3304788",
-    "pdb-l4e-LJ18R2BLXP3304789",
-    "pdb-l4e-LJ18R2BL6P3304790",
-    "pdb-l4e-LJ18R2BL8P3304791",
-    "pdb-l4e-LJ18R2BLXP3304792",
-    "pdb-l4e-LJ18R2BL1P3304793",
-    "pdb-l4e-LJ18R2BL3P3304794",
-    "pdb-l4e-LJ18R2BL5P3304795",
-    "pdb-l4e-LJ18R2BL7P3304796"
-]
-ane_6_vehicles = [
-    "pdb-l4e-LJ18R2BL6P3305194",
-    "pdb-l4e-LJ18R2BL8P3305195",
-    "pdb-l4e-LJ18R2BLXP3305196",
-    "pdb-l4e-LJ18R2BL1P3305197",
-    "pdb-l4e-LJ18R2BL3P3305198",
-    "pdb-l4e-LJ18R2BL5P3305199"
-]
-yto_5_vehicles = ["pdb-l4e-c0003", "pdb-l4e-c0004",
-                  "pdb-l4e-c0005", "pdb-l4e-c0006",
-                  "pdb-l4e-c0007"]
-zto_2_vehicles = ["pdb-l4e-c0001", "pdb-l4e-b0007"]
-
-
-
 ## runtime环境变量
 
 ### Makefile
@@ -1317,9 +1237,12 @@ WantedBy=multi-user.target
     - /bin/bash -c 'export VEHICLE_NAME=`cat /data/BRAND`-`cat /data/VIN` &&  /opt/plusai/lib/event_recorder/event_recorder --flagfile=/opt/plusai/conf/event_recorder/pdb-l4e-lab001.flags __name:=event_recorder `cat /opt/plusai/config/event_recorder.gflags`, --flagfile=/opt/plusai/conf/event_recorder/pdb-l4e-lab001.flags里写明了--upload_dms_to_mgmt=true，则FLAGS_upload_dms_to_mgmt变量就注册进了event_recorder runtime
     - .gflags中同样写入--upload_dms_to_mgmt=true，hamlaunch start节点不起作用，并且gflags文件被自动删除
 
+### systemd的常用命令
+
+
 ## bag
 
-
+### 查看bag信息
 ```
 # 本地查看bag信息
 fastbag info -i china-aeb.db
@@ -1329,6 +1252,16 @@ plusecho -b china-aeb.db /vehicle/dbw_reports > dbw 2>&1
 plusecho2 -topic /vehicle/dbw_reports
 # grep 筛选
 cat cs | grep POSSIBLE_COLLISION_DETECTED_BASED_ON_DELTA_V -A 1 | grep "value: 0" | wc -l
+```
+
+### 分析bag latency
+```
+# 登录 241
+docker exec -it wenjun-20240227T114103 bash
+source /opt/plusai/setup-plusai-common.bash 
+source /opt/ros/noetic/setup.bash 
+python ~/github/tools/common/python/aggregate_latency_reports_from_bags.py --bags path_to_bag --abnormal-threshold -1 > analysis.txt 2>&1
+vi analysis.txt
 ```
 
 
@@ -1360,4 +1293,52 @@ sudo chown plusai:plusai drive
 cd drive
 make clean
 make pacakge
+```
+
+## event_recorder配置同步
+### 路径
+
+
+## 远程诊断
+### 功能
+- crash / eol / 按下按钮(disengage状态)， 会上传日志
+- core文件基本不会上传 除非很小
+
+### 路径
+- /sdata/selective/remote_diagnosis # sfs-nas2.cn-jssz1.internal.ctclouds.com:/share-56f841bd
+
+## tensorRT
+### 安装
+```
+# 安装 cuda 11.8 for x86_84 ubunut 22.04
+wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
+sudo bash cuda_11.8.0_520.61.05_linux.run # continue， 如果已经安装Driver就不需要安装driver
+# 添加环境变量到bashrc
+export PATH=$PATH:/usr/local/cuda/bin
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64
+export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/cuda/lib64
+nvcc -V # 查看cuda版本
+
+# 安装cudnn 8.x for cuda 11.x
+wget https://developer.nvidia.com/downloads/compute/cudnn/secure/8.9.7/local_installers/11.x/cudnn-linux-x86_64-8.9.7.29_cuda11-archive.tar.xz
+tar -xvf  cudnn-linux-x86_64-8.9.7.29_cuda11-archive.tar.xz
+sudo cp cudnn-linux-x86_64-8.9.7.29_cuda11-archive/lib/*  /usr/local/cuda-11.8/lib64
+sudo cp cudnn-linux-x86_64-8.9.7.29_cuda11-archive/include/*  /usr/local/cuda-11.8/include
+cat /usr/local/cuda/include/cudnn_version.h | grep CUDNN_MAJOR -A 2 # 查看版本
+
+#  安装tensorRT 用tar包最好控制 避免版本问题
+wget https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/secure/8.6.1/tars/TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-11.8.tar.gz
+tar -xzvf TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-11.8.tar.gz
+mv TensorRT-8.6.1.6 /usr/src/
+# 添加环境变量到bashrc
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/src/TensorRT-8.6.1.6/lib
+export PATH=$PATH:/usr/src/TensorRT-8.6.1.6/bin
+```
+
+### 测试
+```
+cd TensorRT-8.6.1.6/samples/sampleOnnxMNIST
+sudo make -j8
+cd ../../bin
+./sample_onnx_mnist
 ```
