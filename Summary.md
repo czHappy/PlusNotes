@@ -729,7 +729,7 @@ dpkg -l | grep plusai-common-pro # 查看版本 然后进入common_protobuf里�
 
 ### kafka
 ### systemd
-
+- journalctl -xe -u myservice.service  # 查看service日志
 ### core dump
 - 修改limit
   - ulimit -c 查询
@@ -1337,6 +1337,7 @@ export PATH=$PATH:/usr/src/TensorRT-8.6.1.6/bin
 
 ### 测试
 ```
+# 参考 https://docs.nvidia.com/deeplearning/tensorrt/sample-support-guide/index.html#onnx_mnist_sample
 cd TensorRT-8.6.1.6/samples/sampleOnnxMNIST
 sudo make -j8
 cd ../../bin
