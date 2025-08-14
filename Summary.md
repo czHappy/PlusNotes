@@ -29,6 +29,9 @@
     ```
 - 在vscode中设置terminal为zsh
   - 在设置里面搜索terminal.integrated，设置"terminal.integrated.defaultProfile.linux": "zsh"
+
+- 如果遇到小图标或者字体乱码，参阅 https://github.com/romkatv/powerlevel10k?tab=readme-ov-file#meslo-nerd-font-patched-for-powerlevel10k 安装Meslo Nerd 字体
+
 - 一键配置脚本
 ```bash
 #!/bin/bash
@@ -289,7 +292,49 @@ pg_dump testdb > /tmp/testdb.sql
 # 迁移数据库
 create 
 ```
+### 迁移表
+```sh
+# 迁出
+PGPASSWORD='e7zYehLG#' pg_dump \                                                                                                                           Py base task 4 19:07:33
+  -U root \
+  -h 172.16.100.178 \
+  -p 45432 \
+  -d vehicle_management_db_test \
+  -t public.remote_admin_system_cmd_cache \
+  --schema-only \
+  -f remote_admin_system_cmd_cache_schema.sql
 
+# 迁入
+PGPASSWORD='e7zYehLG#' psql \
+  -U root \
+  -h 172.16.100.17 \
+  -p 5432 \
+  -d vehicle_management_db \
+  -f remote_admin_system_cmd_cache_schema.sql
+
+```
+
+### 数据库大小
+- 数据库各个表的大小
+```
+SELECT 
+    nspname || '.' || relname AS "relation",
+    pg_size_pretty(pg_total_relation_size(C.oid)) AS "total_size"
+FROM 
+    pg_class C
+LEFT JOIN 
+    pg_namespace N ON (N.oid = C.relnamespace)
+WHERE 
+    nspname NOT IN ('pg_catalog', 'information_schema')
+    AND C.relkind IN ('r', 't', 'm')  -- r=普通表, t=TOAST表, m=物化视图
+ORDER BY 
+    pg_total_relation_size(C.oid) DESC;
+
+```
+- 查看数据总大小
+```
+SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;
+```
 ## 2023.5.11
 ### git pull/push要求输入密码
 - ssh-key配置正常，ssh方式的git clone正常
@@ -395,6 +440,8 @@ git push
 - vim /root/.ssh/id_rsa.pub 打开公钥文件复制全文将公钥id_rsa.pub添加到你的github或者gitlab等仓库中
 - 登录仓库，用户setting -> SSH key 将公钥粘贴进去，起个容易识别的名字 title
 
+### ssh秘钥过期
+- ssh-keygen -f "/home/plusai/.ssh/known_hosts" -R "192.168.11.100"
 ## Jenkinsfile
 ### pipeline
 - agent: 定义了pipeline或者stage内执行环境
@@ -520,6 +567,17 @@ Repository: git@github-cn.plus.ai:plusai/edr_monitor.git
 master
 # see https://github-cn.plus.ai/PlusAI/edr_monitor/commits/master
 ```
+
+### 内置Credential
+
+```
+Dashboard
+Manage Jenkins
+Credentials
+System
+Global credentials (unrestricted)
+```
+
 ## docker
 - 参阅https://yeasy.gitbook.io/docker_practice/
 - dockerfile
@@ -577,6 +635,9 @@ newgrp - docker;
 newgrp - `groups ${USER} | cut -d' ' -f1`; # TODO：必须逐行执行，不知道为什么，批量执行时第二条不会生效
 # 或者，注销并重新登录
 pkill X
+
+# whoami 当前用户
+sudo usermod -aG wireshark $(whoami)
 ```
 
 ### 复用host ssh key
@@ -750,7 +811,9 @@ dpkg -l | grep plusai-common-pro # 查看版本 然后进入common_protobuf里�
 - 某个节点的环境变量查询
   - pidof 节点
   - cat cat /proc/<PID>/environ
-
+- 自启动
+  - 脚本 /opt/plusai/launch/l4e-common/application_start_linux.sh 中hamlaunch变量不为空
+  - 启动流程 /etc/rc.local 规定了启动的动作 Linux开机启动程序rc.local
 ### drive镜像
 - proto路径： /opt/plusai/common/include/event_recorder
 
@@ -943,6 +1006,54 @@ ALTER TABLE driver_behavior OWNER TO root;
 CREATE INDEX driver_behavior_idx ON driver_behavior USING btree (vehicle_name, vehicle_timestamp);
 GRANT SELECT ON TABLE public.driver_behavior TO viewer;
 ```
+### 存储信息
+```sql
+# 查看总的存储
+SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;
+# 查看各个表和索引的存储 GB
+SELECT 
+    relname AS "Relation", 
+    pg_total_relation_size(relid) AS "Total Size (Bytes)", 
+    pg_indexes_size(relid) AS "Indexes Size (Bytes)", 
+    pg_relation_size(relid) AS "Table Size (Bytes)"
+FROM pg_stat_user_tables;
+# 查看各个表和索引的存储 字节
+SELECT 
+    relname AS "Relation", 
+    pg_total_relation_size(relid) AS "Total Size (Bytes)", 
+    pg_indexes_size(relid) AS "Indexes Size (Bytes)", 
+    pg_relation_size(relid) AS "Table Size (Bytes)"
+FROM pg_stat_user_tables;
+# 查看各个索引
+SELECT 
+    c.relname AS index_name,
+    pg_size_pretty(pg_relation_size(c.oid)) AS index_size
+FROM 
+    pg_class c
+JOIN 
+    pg_index i ON i.indexrelid = c.oid
+JOIN 
+    pg_stat_user_tables t ON t.relid = i.indrelid
+ORDER BY 
+    pg_relation_size(c.oid) DESC;
+# 查看各个索引的扫描次数
+SELECT
+  relname AS 表名,
+  indexrelname AS 索引名,
+  idx_scan AS 扫描次数
+FROM 
+  pg_stat_user_indexes 
+```
+
+### 索引
+```sql
+# 创建
+CREATE INDEX message_created_at ON public.message USING btree (created_at) WHERE (created_at IS NOT NULL);
+# 并发清理
+reindex index concurrently message_index_for_snip_job_query;
+# 删除
+DROP INDEX public.message_deleted_at;
+```
 
 ### 创建只读用户
 
@@ -952,6 +1063,13 @@ ALTER USER reader SET default_transaction_read_only=on;
 GRANT USAGE ON SCHEMA public to reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA public to reader;
 ```
+
+### postgres 容器
+```
+service postgresql status
+service postgresql start
+```
+
 ## 自动驾驶全栈
 ### ROS
 - rostopic hz /vehicle/control_cmd
@@ -982,6 +1100,13 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public to reader;
 - ublox
 - dispatcher_server
 
+### watchdog
+- checklist修改
+```
+cd /opt/plusai/share/app_watchdog/var
+grep -ri edr_io # 显示edr io error的配置文件 注释掉两行
+```
+
 ### BBOX
 - a black box project for l4e trucks data collection
 
@@ -1002,8 +1127,29 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public to reader;
 
 ## Other
 ### 常用命令
+- bag分布查询
 ```sql
+select uat, count(*) from triggered_event te where vehicle_name like '%5195%' 
+and vehicle_timestamp > '2025-03-08 00:00:00' 
+and vehicle_timestamp < '2025-03-09 00:00:00'
+group by uat ;
+```
+- 表存储大小查询
 
+```sql
+SELECT 
+    pg_size_pretty(SUM(pg_total_relation_size(table_name::text))) AS total_size,
+    CURRENT_TIME as cur_timestamp
+FROM 
+    information_schema.tables
+WHERE 
+    table_name IN ('full_control_command', 'full_dbw_report', 'full_localization_estimation', 
+                   'full_localization_status_report', 'full_plan_state', 'full_vehicle_state');
+```
+- 整体数据库存储空间
+
+```sql
+SELECT pg_size_pretty(pg_database_size('vehicle_management_db'));
 ```
 ### Questions
 - 为什么Failed to connect via socket_fd 16 to '192.168.2.14' on port 13006: 'Operation already in progress'
@@ -1270,7 +1416,41 @@ vi analysis.txt
 - df -h查看空间最大的盘 /media/sda3/2024-04-09
 - ls -lat | head -n 10 看看是否在写入
 - 或者iostat -x 1对比前后两帧的写入速率 w/s
+### recorder
+- 配置文件: /home/plusai/bbox/recorder/recorder_qnx.json
+- 查看docker container挂载 docker inspect recorder | less /搜索mounts
+- 重启recorder服务: sudo systemctl restart recorder
 
+
+## 计算机网络
+- route -n 显示路由
+  - 查看网关地址 192.168.46.100,因此bbox的网关是adu，而adu的网关是ibox，因此都走的是ibox
+```SH
+plusai@bbox:~$ route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         192.168.46.100  0.0.0.0         UG    20100  0        0 enp1s0
+169.254.0.0     0.0.0.0         255.255.0.0     U     1000   0        0 enp1s0
+172.16.0.10     0.0.0.0         255.255.255.255 UH    0      0        0 tun0
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+172.18.0.0      0.0.0.0         255.255.0.0     U     0      0        0 br-5106f3b81796
+172.19.0.0      0.0.0.0         255.255.0.0     U     0      0        0 br-09950c33ad3a
+172.20.0.0      0.0.0.0         255.255.0.0     U     0      0        0 br-4e21ff3f47a3
+172.21.0.0      0.0.0.0         255.255.0.0     U     0      0        0 br-e608010641eb
+172.22.0.0      0.0.0.0         255.255.0.0     U     0      0        0 br-01aaddb42dc6
+180.117.163.234 192.168.46.100  255.255.255.255 UGH   20100  0        0 enp1s0
+192.168.10.64   0.0.0.0         255.255.255.255 UH    0      0        0 tun0
+192.168.11.230  0.0.0.0         255.255.255.255 UH    0      0        0 tun0
+192.168.46.0    0.0.0.0         255.255.255.0   U     100    0        0 enp1s0
+192.168.254.144 0.0.0.0         255.255.255.252 U     0      0        0 tun0
+```
+
+## 代理
+- apt设置代理
+  - sudo vi /etc/apt/apt.conf.d/proxy 
+```sh
+Acquire::http { Proxy "http://192.168.10.64:3128"; }
+```
 
 
 ## drive工具
@@ -1343,3 +1523,272 @@ sudo make -j8
 cd ../../bin
 ./sample_onnx_mnist
 ```
+
+
+### 常用命令
+- 查看进程 批量读取进程号
+```
+ps aux | grep runtime_alert | grep -v grep | int  | xargs -r kill -9
+```
+- 磁盘性能
+
+## 车端数据问题排查
+- 查看日志，先确认是否是网络问题，返回码不为0？
+- /etc/hosts文件是否异常，错误的ip解析？
+- 如果日志中返回码是0，说明服务端正常处理了请求，此时查看是否有缓存数据在发
+- 如果没有缓存数据，那么查看车端时间，是否是ntpd服务的问题，如果ntpd挂掉，/usr/sbin/ntpd -p /var/run/ntpd.pid -g -u 112:120
+
+## 调试工具
+### 内存调试-heaptrack
+- heaptrack使用方法是：先在adu上安装heaptrack（台架上可以apt install，车端可能需要用别的方法安装）
+车端启用heaptrack检测auto_calib进程内存可以参考这里对event_recorder的监测方法：vi /home/plusai/.config/systemd/user/event_recorder.service
+
+- hamlaunch启动进程之后，会在/home/plusai目录下生成一个类似heaptrack.event_recorder.20213.gz文件，把这个文件拷贝到本地，使用heaptrack_gui heaptrack.event_recorder.20213.gz即可查看内存情况
+![](imgs/heaptrack.png)
+
+
+## 网络
+### curl命令
+- -k 表示不验证对端证书
+- -H 表示头部信息 User-Agent: recorder/1.2.3 表示设置User-Agent字段
+- -o 表示输出文件
+- -vvv 表示输出详细调试信息
+```sh
+curl -k  "https://record-truck-cn.zhijiatech.net:8443/download?filename=testdownload" -H 'User-Agent: recorder/1.2.3' -o downloadfile
+
+```
+
+### 出口IP
+- curl -s myip.ipip.net
+
+curl -k -v -X POST https://203.110.232.211:20809/ra/certmanage/v1/apply-certificate -H "Content-Type: application/json" -d '{"vehicle_name": "pdb-l4e-lab005", "start_ts": 1609459200, "end_ts": 1748934969}'
+
+
+curl -k -v -X POST "https://203.110.232.211:20809/ra/certmanage/v1/apply-certificate" \
+  -H "token: GVc3ZvkaCYQAl4DwjC##zcEYkP9" \
+  -d "identifier=single" \
+  -d "validDay=365" \
+  -d "userInfo=CN=智加科技,O=智加科技,C=CN" \
+  -d "signAlg=SHA256WithRSA" \
+  -d "pkcs10=LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ25UQ0NBWVVDQVFBd1dERUxNQWtHQTFVRUJoTUNRMDR4Q3pBSkJnTlZCQWdNQWtKS01Rc3dDUVlEVlFRSApEQUpDU2pFUE1BMEdBMVVFQ2d3R1VFeFZVMEZKTVEwd0N3WURWUVFMREFSRVFWUkJNUTh3RFFZRFZRUUREQVpRClRGVlRRVWt3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRRFRDT0xuY0JsTzE1NDUKVlBlRmNSdzlaZ3Q4QlRxN1NNREU1NmswdXFaWWhVZWFZVFJQUnl6b21Dd3RITEwxd25sdnFnNUdVVW5lRXZtRQo4NkRlTnFzVFJxNTNGaU90TlgzL21CcThONjZKc1lTQ2RmZzczL2xGakFFSnViNE10R0hGbk9hSnZuT2V0OGRVCjZ5bFJlNnN0ektqb0hzbWVoR2pFZUhDNCtoZ0dCQ1VBclB3YVNzWUNpOHMzNExEUWZrTStEU2FWd3dzTjdVMXcKczlnV0l2b05NMEJmYnNyRXY3RDVSc2VtcWZoQ2xjMlo5c2VaNjYxL1M3eEd5Zkpmd1VlVW5ONkFTcHhDN2NwTgpvRkNkUTlFTEJnYWFsSnhiNGZYMTBHdUEyZlRENDVpOU9ZdUpyQk10eFZoeHFVdzkyNldpbXluVTM4U0htNXk4ClllZVZwWVpMQWdNQkFBR2dBREFOQmdrcWhraUc5dzBCQVFzRkFBT0NBUUVBTHArSkJDd3ArT1M3T3lNNndhT0kKYVNTNk55LzhYY2xSN09WbER5L2Jtay96NEVadHE2eGY5QitSWkJRdUkyWnFMcW9EODFMRFczVGY2bllxU1hJdgpTa1hscUtJNDFTOEEzMVNac1Exa3Y1b09ZNDZHR1IxMy8wc01ETm9ISFl3NnowRlJMWlhvV1pnc1ZGZ3FBUktNCklQTHFpbDZUUDJvS3ZHTzg0T1R0MmtsSitwRUZhN0wyWXNURVBBV3dBNVNEYjdKMVNJbGw3UUo4SUpuRDFvTk8KWDlCN3A2bU1wT0dIakl6bWhwblZubXFkN2NISVBTYk9HS3Q1RjB1WEJGS00zNTZ2d0Y3c0pNZXM5cExYMnJmdwpMUWlacmNwM0Jackl4bXRGQzJYWDVYVDR4eWVycHQ3WFpKeUVtbkV1MTEvWFVSUlNIdkpHM1A0Nit2Z3lUbC9SCkRnPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==" \
+  -d "caId=2"
+
+
+  curl -k -v -X POST "https://203.110.232.211:20809/ra/certmanage/v1/apply-certificate" \
+  -H "token: GVc3ZvkaCYQAl4DwjC##zcEYkP9" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifier": "single",
+    "validDay": 365,
+    "userInfo": "CN=智加科技,O=智加科技,C=CN",
+    "signAlg": "SHA256WithRSA",
+    "pkcs10": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ25UQ0NBWVVDQVFBd1dERUxNQWtHQTFVRUJoTUNRMDR4Q3pBSkJnTlZCQWdNQWtKS01Rc3dDUVlEVlFRSApEQUpDU2pFUE1BMEdBMVVFQ2d3R1VFeFZVMEZKTVEwd0N3WURWUVFMREFSRVFWUkJNUTh3RFFZRFZRUUREQVpRClRGVlRRVWt3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRRFRDT0xuY0JsTzE1NDUKVlBlRmNSdzlaZ3Q4QlRxN1NNREU1NmswdXFaWWhVZWFZVFJQUnl6b21Dd3RITEwxd25sdnFnNUdVVW5lRXZtRQo4NkRlTnFzVFJxNTNGaU90TlgzL21CcThONjZKc1lTQ2RmZzczL2xGakFFSnViNE10R0hGbk9hSnZuT2V0OGRVCjZ5bFJlNnN0ektqb0hzbWVoR2pFZUhDNCtoZ0dCQ1VBclB3YVNzWUNpOHMzNExEUWZrTStEU2FWd3dzTjdVMXcKczlnV0l2b05NMEJmYnNyRXY3RDVSc2VtcWZoQ2xjMlo5c2VaNjYxL1M3eEd5Zkpmd1VlVW5ONkFTcHhDN2NwTgpvRkNkUTlFTEJnYWFsSnhiNGZYMTBHdUEyZlRENDVpOU9ZdUpyQk10eFZoeHFVdzkyNldpbXluVTM4U0htNXk4ClllZVZwWVpMQWdNQkFBR2dBREFOQmdrcWhraUc5dzBCQVFzRkFBT0NBUUVBTHArSkJDd3ArT1M3T3lNNndhT0kKYVNTNk55LzhYY2xSN09WbER5L2Jtay96NEVadHE2eGY5QitSWkJRdUkyWnFMcW9EODFMRFczVGY2bllxU1hJdgpTa1hscUtJNDFTOEEzMVNac1Exa3Y1b09ZNDZHR1IxMy8wc01ETm9ISFl3NnowRlJMWlhvV1pnc1ZGZ3FBUktNCklQTHFpbDZUUDJvS3ZHTzg0T1R0MmtsSitwRUZhN0wyWXNURVBBV3dBNVNEYjdKMVNJbGw3UUo4SUpuRDFvTk8KWDlCN3A2bU1wT0dIakl6bWhwblZubXFkN2NISVBTYk9HS3Q1RjB1WEJGS00zNTZ2d0Y3c0pNZXM5cExYMnJmdwpMUWlacmNwM0Jackl4bXRGQzJYWDVYVDR4eWVycHQ3WFpKeUVtbkV1MTEvWFVSUlNIdkpHM1A0Nit2Z3lUbC9SCkRnPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==",
+    "caId": 1929804861809926146,
+    "userExtensions": [
+      {
+        "oid": "2.5.29.17",
+        "isCritical": false,
+        "value": "DNS:example.com"
+      },
+      {
+        "oid": "1.3.6.1.5.5.7.3.1",
+        "isCritical": true,
+        "value": "serverAuth"
+      }
+    ]
+  }'
+
+
+
+  curl -k -v -X POST "https://203.110.232.211:20809/ra/certmanage/v1/apply-certificate" \
+  -H "token: GVc3ZvkaCYQAl4DwjC##zcEYkP9" \
+  -d '{
+    "identifier": "single",
+    "validDay": 365,
+    "userInfo": "CN=智加科技,O=智加科技,C=CN",
+    "signAlg": "SHA256WithRSA",
+    "pkcs10": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ25UQ0NBWVVDQVFBd1dERUxNQWtHQTFVRUJoTUNRMDR4Q3pBSkJnTlZCQWdNQWtKS01Rc3dDUVlEVlFRSApEQUpDU2pFUE1BMEdBMVVFQ2d3R1VFeFZVMEZKTVEwd0N3WURWUVFMREFSRVFWUkJNUTh3RFFZRFZRUUREQVpRClRGVlRRVWt3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRRFRDT0xuY0JsTzE1NDUKVlBlRmNSdzlaZ3Q4QlRxN1NNREU1NmswdXFaWWhVZWFZVFJQUnl6b21Dd3RITEwxd25sdnFnNUdVVW5lRXZtRQo4NkRlTnFzVFJxNTNGaU90TlgzL21CcThONjZKc1lTQ2RmZzczL2xGakFFSnViNE10R0hGbk9hSnZuT2V0OGRVCjZ5bFJlNnN0ektqb0hzbWVoR2pFZUhDNCtoZ0dCQ1VBclB3YVNzWUNpOHMzNExEUWZrTStEU2FWd3dzTjdVMXcKczlnV0l2b05NMEJmYnNyRXY3RDVSc2VtcWZoQ2xjMlo5c2VaNjYxL1M3eEd5Zkpmd1VlVW5ONkFTcHhDN2NwTgpvRkNkUTlFTEJnYWFsSnhiNGZYMTBHdUEyZlRENDVpOU9ZdUpyQk10eFZoeHFVdzkyNldpbXluVTM4U0htNXk4ClllZVZwWVpMQWdNQkFBR2dBREFOQmdrcWhraUc5dzBCQVFzRkFBT0NBUUVBTHArSkJDd3ArT1M3T3lNNndhT0kKYVNTNk55LzhYY2xSN09WbER5L2Jtay96NEVadHE2eGY5QitSWkJRdUkyWnFMcW9EODFMRFczVGY2bllxU1hJdgpTa1hscUtJNDFTOEEzMVNac1Exa3Y1b09ZNDZHR1IxMy8wc01ETm9ISFl3NnowRlJMWlhvV1pnc1ZGZ3FBUktNCklQTHFpbDZUUDJvS3ZHTzg0T1R0MmtsSitwRUZhN0wyWXNURVBBV3dBNVNEYjdKMVNJbGw3UUo4SUpuRDFvTk8KWDlCN3A2bU1wT0dIakl6bWhwblZubXFkN2NISVBTYk9HS3Q1RjB1WEJGS00zNTZ2d0Y3c0pNZXM5cExYMnJmdwpMUWlacmNwM0Jackl4bXRGQzJYWDVYVDR4eWVycHQ3WFpKeUVtbkV1MTEvWFVSUlNIdkpHM1A0Nit2Z3lUbC9SCkRnPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==",
+    "caId": 1929804861809926146,
+    "userExtensions": [
+      {
+        "oid": "2.5.29.17",
+        "isCritical": false,
+        "value": "DNS:example.com"
+      },
+      {
+        "oid": "1.3.6.1.5.5.7.3.1",
+        "isCritical": true,
+        "value": "serverAuth"
+      }
+    ]
+  }
+
+
+  ### drive 编译
+  - drive进入docker 镜像
+  - [重要] conda deactivate 退出conda环境 用系统的环境
+  - cd drive 
+  - make
+  
+
+## cuda
+### 编译
+- nvcc -o pinned pinned.cu 
+### profiling
+-  nsys 是系统层面的分析工具，可以分析主机与设备端的信息。 ncu 则是用于分析核函数的工具。两者均有图形界面版本和命令行版本。
+### 核函数 profiling
+- 安装 Nsight Compute
+- ncu -f --set full -o my_report pinned # 生成my_report.ncu-rep
+- ncu-ui my_report.ncu-rep # 打开ncu-ui分析报告
+
+### Pipeline profiling
+- nsys profile --stats=true -o report-vec-add ./vectorAdd
+- nsys-ui report-vec-add.nsys-rep # 使用nsys-ui分析报告
+- nsys-ui my_report.ncu-rep # 使用ncu生成的报告也可以
+
+## metrics
+### uat总结
+- select uat, count(*) from triggered_event te where vehicle_name like '%2880%' group by uat order by count(*) desc;
+
+## 测试
+- ibox service
+
+cd ibox_service/
+cmake -DWITH_COVERAGE=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo . -Bbuild
+mkdir testtmp
+LC_ALL=C TMPDIR=/home/plusai/workspace/ibox_service/ibox_service/testtmp make -j -C build clean check package
+mkdir -p integration_test_results
+./run_integration_tests.sh -s /home/plusai/workspace/ibox_service/ibox_service/integration_test_results
+
+
+## 系统日志
+- /var/log/syslog 非常重要的日志
+- docker start不了容器，最后发现是nfs挂载超时。
+
+## 用户
+
+- linux创建用户
+  - sudo useradd -m -s /bin/bash caoyu
+    - -m：创建用户主目录（通常位于 /home/caoyu）
+    - -s /bin/bash：设置默认 shell 为 bash
+  - sudo passwd caoyu
+  - sudo usermod -aG sudo caoyu # 增加sudo权限
+
+
+## instance
+
+### 磁盘挂载
+- lsblk # 查看磁盘
+- sudo mkfs.xfs /dev/vdb #格式化磁盘为 xfs
+- sudo blkid /dev/vdb # 查看磁盘UUID等信息
+
+
+
+### apt代理
+- vim /etc/apt/apt.conf.d/proxy
+```
+Acquire::http { Proxy "http://proxy_cn.corp.plus.ai:3128"; }
+Acquire::https { Proxy "http://proxy_cn.corp.plus.ai:3128"; }
+Acquire::http::Proxy::dist-cn:5000 "DIRECT";
+```
+### docker 代理
+- 
+    7  2025-07-30 17:37:36 mkdir -p /etc/systemd/system/docker.service.d
+    8  2025-07-30 17:37:40 vim /etc/systemd/system/docker.service.d/proxy
+    9  2025-07-30 17:41:27 docker login docker.pluscn.cn:5050
+
+### docker 切换data目录
+- 修改 /etc/docker/daemon.json 
+
+```sh
+{
+    "data-root": "/data",
+    "dns": [
+        "172.16.0.10"
+    ],
+    "dns-search": [
+        "corp.pluscn.cn"
+    ],
+    "insecure-registries": [
+        "dist-cn:5000"
+    ]
+}
+```
+- sudo systemctl restart docker #重启服务
+### docker log in
+- docker pull docker.plusai.co:5050/plusai/selective_data_monitor:209 无权限
+- docker login 命令用于登陆到一个 Docker 镜像仓库，如果未指定镜像仓库地址，默认为官方仓库 Docker Hub
+  - docker login -u username -p password server_name
+  - Docker 会将 token 存储在 ~/.docker/config.json 文件中，从而作为拉取私有镜像的凭证。（也可以之直接将别人的config.json内容复制到自己的当中）
+```json
+// 也可以直接复制到~/.docker/config.json 也可以docker login
+{
+	"auths": {
+		"docker.plusai.co:5050": {
+			"auth": "c3otZG9ja2VyOkFhMTIzNDU2"
+		},
+    "dist:5000": {
+            "auth": "amVua2luczo0aXVzb2U2dno1MXR3NmJ0"
+    },
+    "dist-cn:5000": {
+            "auth": "amVua2luczo0aXVzb2U2dno1MXR3NmJ0"
+    },
+    "bj-docker.plusai.co:5050": {
+            "auth": "c3otZG9ja2VyOkFhMTIzNDU2"
+    }
+	}
+}
+```
+### docker去除sudo
+- sudo groupadd docker
+- sudo usermod -aG docker $USER
+- newgrp docker
+- docker ps # 验证
+
+## 网络排查
+
+### 端口占用
+-  sudo netstat -tulnp | grep 80
+
+### 流量监控
+- sudo iftop
+
+
+## profile
+### CPU profile
+- gperf
+
+```
+10031  vi main.cpp
+10032  g++ -pg -o main main.cpp
+10033  ./main
+10034  gprof expensive_example gmon.out > analysis.txt
+10035  gprof main gmon.out > analysis.txt
+```
+
+### memory perf
+```
+heaptrack ./main
+```
+
+
+## bag查询与统计
+
+- 统计一天发生的bag总数
+  - select count(*) as cnt from snip_bag where snip_bag.upload_status = 'UPLOADED'
+	and snip_bag.local_uri like '%20250804T%';
+- 统计一天内某辆车的bag上传成功数 c11,8.4
+  - select local_uri, upload_status  from snip_bag where local_uri like '%pdb-l4e-c0011%' and local_uri like '%20250804T%' order by created_at desc ;
+- 统计一天内各车的bag上传成功数
+
+```
+select name, count(*) as cnt from snip_bag, vehicle where snip_bag.vehicle_id = vehicle.id 
+	and snip_bag.upload_status = 'UPLOADED'
+	and snip_bag.local_uri like '%20250804T%'
+	group by vehicle.name
+	order by cnt desc;
+```
+- 查看存在数据丢失的bag
+  - select * from snip_bag sb where  (kafka_loss > 0 or local_disk_loss > 0) order by  start_ts desc limit 10;
+
+ssh-keygen -f "/root/.ssh/known_hosts" -R "192.168.11.220"
